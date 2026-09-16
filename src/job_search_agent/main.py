@@ -1,4 +1,5 @@
 import argparse
+import sys
 import logging
 from pathlib import Path
 
@@ -16,10 +17,17 @@ def parse_args():
         description="Analyze how well a job matches the candidate profile."
     )
 
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group(required=True)
+
+    group.add_argument(
         "--jd",
-        required=True,
         help="Path to a text file containing the job description.",
+    )
+
+    group.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read the job description from standard input.",
     )
 
     return parser.parse_args()
@@ -35,12 +43,26 @@ def read_job_description(path: str) -> str:
 
     return jd_path.read_text(encoding="utf-8")
 
+def read_job_description_from_stdin() -> str:
+    job_description = sys.stdin.read().strip()
+
+    if not job_description:
+        raise ValueError("No job description was provided through stdin.")
+
+    return job_description
+
+def get_job_description(args) -> str:
+    if args.stdin:
+        logging.info("Reading job description from stdin...")
+        return read_job_description_from_stdin()
+
+    logging.info("Reading job description from file...")
+    return read_job_description(args.jd)
 
 def run() -> None:
     args = parse_args()
 
-    logging.info("Reading job description...")
-    job_description = read_job_description(args.jd)
+    job_description = get_job_description(args)
 
     logging.info("Loading candidate profile...")
     raw_profile = load_config("config/candidate_profile.yaml")
