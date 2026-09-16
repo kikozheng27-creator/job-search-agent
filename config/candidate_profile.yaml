@@ -1,0 +1,21 @@
+target_roles:
+  - Biostatistician
+  - Data Analyst
+  - Data Scientist
+
+education:
+  degree: "Master's"
+  field: "Biostatistics"
+
+skills:
+  programming:
+    - Python
+    - R
+    - SQL
+
+  statistics:
+    - Regression
+    - Survival Analysis
+    - GLM
+
+experience_level: "entry_level"

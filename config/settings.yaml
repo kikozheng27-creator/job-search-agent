@@ -1,0 +1,7 @@
+app:
+  name: "Job Search Agent"
+  version: "0.1.0"
+
+paths:
+  raw_data: "data/raw"
+  processed_data: "data/processed"

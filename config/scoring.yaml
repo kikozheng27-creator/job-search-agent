@@ -1,0 +1,10 @@
+weights:
+  skills: 0.35
+  education: 0.20
+  experience: 0.25
+  career_relevance: 0.20
+
+thresholds:
+  strongly_apply: 85
+  apply: 70
+  maybe: 55
