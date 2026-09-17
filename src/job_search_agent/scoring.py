@@ -1,32 +1,32 @@
+from job_search_agent.config_models import ScoringWeights, Thresholds
+from job_search_agent.models import ComponentScores, Recommendation
+
+
 def calculate_overall_score(
-    skills_score: int,
-    education_score: int,
-    experience_score: int,
-    career_relevance_score: int,
-    weights: dict,
+    scores: ComponentScores,
+    weights: ScoringWeights,
 ) -> float:
     overall_score = (
-        skills_score * weights["skills"]
-        + education_score * weights["education"]
-        + experience_score * weights["experience"]
-        + career_relevance_score * weights["career_relevance"]
+        scores.skills * weights.skills
+        + scores.education * weights.education
+        + scores.experience * weights.experience
+        + scores.career_relevance * weights.career_relevance
     )
 
     return round(overall_score, 1)
 
-from job_search_agent.models import Recommendation
 
 def get_recommendation(
     overall_score: float,
-    thresholds: dict,
+    thresholds: Thresholds,
 ) -> Recommendation:
-    if overall_score >= thresholds["strongly_apply"]:
+    if overall_score >= thresholds.strongly_apply:
         return Recommendation.STRONGLY_APPLY
 
-    if overall_score >= thresholds["apply"]:
+    if overall_score >= thresholds.apply:
         return Recommendation.APPLY
 
-    if overall_score >= thresholds["maybe"]:
+    if overall_score >= thresholds.maybe:
         return Recommendation.MAYBE
 
     return Recommendation.SKIP

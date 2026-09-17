@@ -1,0 +1,63 @@
+{
+  "requirements": {
+    "company": "Northline Clinical Research",
+    "job_title": "Senior Biostatistician II",
+    "location": "Raleigh, NC",
+    "employment_type": "full_time",
+    "minimum_years_experience": 6,
+    "required_degree": "PhD in Biostatistics or Statistics",
+    "required_skills": [
+      "SAS",
+      "survival analysis",
+      "mixed models",
+      "regulatory submissions",
+      "biostatistics"
+    ],
+    "preferred_skills": [
+      "R",
+      "Bayesian adaptive trial designs",
+      "CDISC ADaM",
+      "CDISC SDTM",
+      "oncology"
+    ],
+    "sponsorship": "not_offered",
+    "sponsorship_language": "Northline Clinical Research is unable to provide visa sponsorship for this position at this time.",
+    "salary_range": {
+      "minimum": 145000.0,
+      "maximum": 175000.0,
+      "currency": "USD",
+      "period": "year"
+    },
+    "seniority_level": "unknown"
+  },
+  "scores": {
+    "skills": 20,
+    "education": 0,
+    "experience": 0,
+    "career_relevance": 50
+  },
+  "overall_score": 17.0,
+  "recommendation": "SKIP",
+  "passes_hard_filters": false,
+  "hard_filter_reasons": [
+    "Requires 6+ years of experience, which is more than 2 year(s) above the target maximum of 2."
+  ],
+  "concerns": [
+    "Posting states it does not offer visa sponsorship. This does not block you now, but it will matter once your current work authorization ends (status: F-1 student; eligible for OPT/STEM OPT; may require H-1B or other employer sponsorship after OPT/STEM OPT)."
+  ],
+  "strengths": [
+    "Candidate has a Master's degree in Biostatistics, aligning with the field.",
+    "Candidate possesses skills in R, which is listed as a preferred skill.",
+    "Candidate is familiar with survival analysis, matching one of the required skills."
+  ],
+  "missing_requirements": [
+    "PhD in Biostatistics or Statistics",
+    "Minimum of 6 years of biostatistics experience",
+    "Expert-level SAS programming",
+    "Experience supporting regulatory submissions",
+    "Additional required skills such as mixed models and biostatistics expertise"
+  ],
+  "reasoning": "The candidate's skills do not align well with the required skills, especially lacking expertise in SAS and significant biostatistical experience needed for the role. The education requirement is unmet as the posting specifies a PhD, whereas the candidate holds a Master's. Additionally, the candidate has only half a year of experience, falling significantly short of the 6 years requested.",
+  "source_url": null,
+  "analyzed_at": "2026-09-17T01:09:41.092478"
+}

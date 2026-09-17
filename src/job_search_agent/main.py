@@ -1,47 +1,125 @@
 import argparse
-import sys
 import logging
+import sys
 from pathlib import Path
 
 from pydantic import ValidationError
 
-from job_search_agent.ai_client import AIClient
-from job_search_agent.config_loader import load_config
+from job_search_agent.config_loader import (
+    load_candidate_profile,
+    load_filter_config,
+    load_scoring_config,
+)
 from job_search_agent.job_matcher import JobMatcher
 from job_search_agent.logging_config import setup_logging
-from job_search_agent.models import CandidateProfile
-from job_search_agent.reporting import print_report, save_report
+from job_search_agent.models import JobAnalysis
+from job_search_agent.protocols import JobEvaluator
+from job_search_agent.reporting import (
+    print_report,
+    print_tracked_jobs,
+    save_report,
+)
+from job_search_agent.tracker import (
+    DEFAULT_DATABASE_PATH,
+    ApplicationStatus,
+    JobTracker,
+)
 
-def parse_args():
+
+CONFIG_DIR = Path("config")
+
+STATUS_CHOICES = [status.value for status in ApplicationStatus]
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Analyze how well a job matches the candidate profile."
+        prog="job-search-agent",
+        description="Analyze and track job postings against your profile.",
     )
 
-    group = parser.add_mutually_exclusive_group(required=True)
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    group.add_argument(
+    analyze = subparsers.add_parser(
+        "analyze",
+        help="Analyze a job description.",
+    )
+
+    source = analyze.add_mutually_exclusive_group(required=True)
+
+    source.add_argument(
         "--jd",
         help="Path to a text file containing the job description.",
     )
 
-    group.add_argument(
+    source.add_argument(
         "--stdin",
         action="store_true",
         help="Read the job description from standard input.",
     )
 
-    return parser.parse_args()
+    analyze.add_argument(
+        "--url",
+        help="Source URL of the posting, recorded with the analysis.",
+    )
+
+    analyze.add_argument(
+        "--save",
+        action="store_true",
+        help="Save the analysis to the local tracker.",
+    )
+
+    analyze.add_argument(
+        "--status",
+        choices=STATUS_CHOICES,
+        default=ApplicationStatus.SAVED.value,
+        help="Application status to record with --save.",
+    )
+
+    analyze.add_argument(
+        "--notes",
+        help="Free-text notes to record with --save.",
+    )
+
+    listing = subparsers.add_parser(
+        "list",
+        help="List previously analyzed jobs.",
+    )
+
+    listing.add_argument(
+        "--status",
+        choices=STATUS_CHOICES,
+        help="Show only jobs with this application status.",
+    )
+
+    listing.add_argument(
+        "--limit",
+        type=int,
+        help="Show at most this many jobs.",
+    )
+
+    for subparser in (analyze, listing):
+        subparser.add_argument(
+            "--database",
+            default=DEFAULT_DATABASE_PATH,
+            help="Path to the tracker database.",
+        )
+
+    return parser
 
 
-def read_job_description(path: str) -> str:
+def read_job_description_from_file(path: str) -> str:
     jd_path = Path(path)
 
     if not jd_path.exists():
-        raise FileNotFoundError(
-            f"Job description file not found: {path}"
-        )
+        raise FileNotFoundError(f"Job description file not found: {path}")
 
-    return jd_path.read_text(encoding="utf-8")
+    job_description = jd_path.read_text(encoding="utf-8").strip()
+
+    if not job_description:
+        raise ValueError(f"Job description file is empty: {path}")
+
+    return job_description
+
 
 def read_job_description_from_stdin() -> str:
     job_description = sys.stdin.read().strip()
@@ -51,57 +129,100 @@ def read_job_description_from_stdin() -> str:
 
     return job_description
 
-def get_job_description(args) -> str:
+
+def get_job_description(args: argparse.Namespace) -> str:
     if args.stdin:
         logging.info("Reading job description from stdin...")
         return read_job_description_from_stdin()
 
     logging.info("Reading job description from file...")
-    return read_job_description(args.jd)
+    return read_job_description_from_file(args.jd)
 
-def run() -> None:
-    args = parse_args()
 
-    job_description = get_job_description(args)
+def analyze_job_description(
+    job_description: str,
+    ai_client: JobEvaluator,
+    source_url: str | None = None,
+    config_dir: str | Path = CONFIG_DIR,
+) -> JobAnalysis:
+    """Load configuration and run one analysis.
 
-    logging.info("Loading candidate profile...")
-    raw_profile = load_config("config/candidate_profile.yaml")
-    profile = CandidateProfile.model_validate(raw_profile)
+    The AI client is injected so this boundary can be tested with a fake.
+    """
+    logging.info("Loading configuration...")
+    directory = Path(config_dir)
 
-    logging.info("Loading scoring configuration...")
-    scoring_config = load_config("config/scoring.yaml")
-
-    logging.info("Loading filter configuration...")
-    filter_config = load_config("config/filters.yaml")
-
-    logging.info("Initializing AI client...")
-    ai_client = AIClient()
+    profile = load_candidate_profile(directory / "candidate_profile.yaml")
+    scoring_config = load_scoring_config(directory / "scoring.yaml")
+    filter_config = load_filter_config(directory / "filters.yaml")
 
     matcher = JobMatcher(
-    ai_client=ai_client,
-    weights=scoring_config["weights"],
-    thresholds=scoring_config["thresholds"],
-    filter_config=filter_config,
+        ai_client=ai_client,
+        scoring_config=scoring_config,
+        filter_config=filter_config,
     )
 
     logging.info("Analyzing job...")
-    result = matcher.match(
+    return matcher.match(
         profile=profile,
         job_description=job_description,
+        source_url=source_url,
+    )
+
+
+def run_analyze(args: argparse.Namespace) -> None:
+    job_description = get_job_description(args)
+
+    # Imported here so `list` works without an API key configured.
+    from job_search_agent.ai_client import AIClient
+
+    logging.info("Initializing AI client...")
+
+    result = analyze_job_description(
+        job_description=job_description,
+        ai_client=AIClient(),
+        source_url=args.url,
     )
 
     print_report(result)
 
     output_path = save_report(result)
-
     logging.info("Report saved to %s", output_path)
 
+    if not args.save:
+        return
 
-def main() -> int:
+    with JobTracker(args.database) as tracker:
+        job_id = tracker.save(
+            result,
+            status=ApplicationStatus(args.status),
+            notes=args.notes,
+        )
+
+    logging.info("Saved to tracker as job %s in %s", job_id, args.database)
+
+
+def run_list(args: argparse.Namespace) -> None:
+    status = ApplicationStatus(args.status) if args.status else None
+
+    with JobTracker(args.database) as tracker:
+        jobs = tracker.list_jobs(status=status, limit=args.limit)
+
+    print_tracked_jobs(jobs)
+
+
+def main(argv: list[str] | None = None) -> int:
     setup_logging()
 
+    args = build_parser().parse_args(argv)
+
+    handlers = {
+        "analyze": run_analyze,
+        "list": run_list,
+    }
+
     try:
-        run()
+        handlers[args.command](args)
 
     except FileNotFoundError as error:
         logging.error("%s", error)

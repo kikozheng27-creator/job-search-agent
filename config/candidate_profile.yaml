@@ -1,11 +1,13 @@
-target_roles:
+# Personal profile. All candidate data lives here, never in Python.
+
+target_job_families:
   - Biostatistician
   - Data Analyst
   - Data Scientist
 
 education:
-  degree: "Master's"
-  field: "Biostatistics"
+  - degree: "Master's"
+    field: "Biostatistics"
 
 skills:
   programming:
@@ -18,4 +20,38 @@ skills:
     - Survival Analysis
     - GLM
 
+  tools: []
+
 experience_level: "entry_level"
+
+# Total relevant professional experience, in years.
+years_of_experience: 0.5
+
+# Drives the work-authorization hard filter.
+#   requires_sponsorship            -> true only if you cannot START work without
+#                                       a petition; OPT/STEM OPT counts as authorized
+#   is_citizen_or_permanent_resident -> true if you can accept "US citizens or
+#                                       permanent residents only" roles
+#   requires_future_sponsorship      -> true if you will need sponsorship later;
+#                                       reported as a concern, never a hard filter
+work_authorization:
+  status: "F-1 student; eligible for OPT/STEM OPT; may require H-1B or other employer sponsorship after OPT/STEM OPT"
+  requires_sponsorship: false
+  is_citizen_or_permanent_resident: false
+  requires_future_sponsorship: true
+
+projects: []
+
+work_experience: []
+
+# 'unavailable' is a hard filter, matched case-insensitively as a substring
+# against the posting's location. Empty means location filtering is off.
+locations:
+  preferred: []
+  unavailable: []
+  work_modes:
+    - remote
+    - hybrid
+    - onsite
+
+preferred_industries: []

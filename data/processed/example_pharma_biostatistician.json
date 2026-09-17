@@ -1,0 +1,44 @@
+{
+  "requirements": {
+    "company": "Example Pharma",
+    "job_title": "Biostatistician",
+    "location": null,
+    "employment_type": "unknown",
+    "minimum_years_experience": 0,
+    "required_degree": "Master's in Biostatistics or Statistics",
+    "required_skills": [
+      "R",
+      "regression",
+      "survival analysis"
+    ],
+    "preferred_skills": [
+      "SAS"
+    ],
+    "sponsorship": "not_mentioned",
+    "sponsorship_language": null,
+    "salary_range": null,
+    "seniority_level": "entry_level"
+  },
+  "scores": {
+    "skills": 100,
+    "education": 100,
+    "experience": 85,
+    "career_relevance": 100
+  },
+  "overall_score": 96.2,
+  "recommendation": "STRONGLY_APPLY",
+  "passes_hard_filters": true,
+  "hard_filter_reasons": [],
+  "concerns": [],
+  "strengths": [
+    "The candidate holds a Master's degree in Biostatistics, directly aligning with the job requirement.",
+    "The candidate has relevant skills in R programming and knowledge of regression and survival analysis, meeting all key skill requirements.",
+    "The candidate's career focus as a Biostatistician aligns perfectly with the role."
+  ],
+  "missing_requirements": [
+    "No work experience beyond 0.5 years, while the job posting requests 0-2 years of experience."
+  ],
+  "reasoning": "The candidate scores highly on skills and education, fully meeting the required qualifications. The experience score reflects a close alignment with the requirement, though slightly short on experience. Given the strong connection to the target job family, the career relevance score also maximizes.",
+  "source_url": null,
+  "analyzed_at": "2026-09-17T01:09:35.109621"
+}
