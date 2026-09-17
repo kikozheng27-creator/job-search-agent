@@ -1,1 +1,18 @@
-max_required_experience_years: 2
+# Hard filters are pass/fail gates evaluated independently of weighted scoring.
+# A posting that fails any enabled filter is recommended SKIP.
+# Every rule abstains when the posting is ambiguous.
+
+experience:
+  enabled: true
+  # Highest number of required years still considered on-target.
+  max_required_years: 2
+  # Extra slack before rejecting, so "clearly above" is required rather than
+  # merely "above". With max 2 and tolerance 2, a posting is only filtered at
+  # 5+ years; 3 and 4 years still go to weighted scoring.
+  tolerance_years: 2
+
+work_authorization:
+  enabled: true
+
+location:
+  enabled: true

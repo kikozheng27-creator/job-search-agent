@@ -1,0 +1,38 @@
+Senior Biostatistician II
+Northline Clinical Research - Raleigh, NC (Hybrid, 3 days on-site)
+Full-time
+
+About the role
+Northline Clinical Research partners with mid-size pharmaceutical sponsors to
+run Phase II and Phase III oncology trials. We are seeking a Senior
+Biostatistician II to act as lead statistician on two ongoing Phase III
+studies, owning the statistical analysis plan from protocol design through
+regulatory submission.
+
+Responsibilities
+- Author and maintain statistical analysis plans (SAPs) for Phase II/III trials
+- Serve as lead statistician on sponsor calls and at FDA advisory meetings
+- Produce and validate CDISC-compliant ADaM datasets and TLF packages
+- Mentor junior biostatisticians and review their deliverables
+- Represent biostatistics on cross-functional study teams
+
+Required qualifications
+- PhD in Biostatistics or Statistics
+- Minimum 6 years of biostatistics experience in a CRO or pharmaceutical setting
+- Expert-level SAS programming, including macro development
+- Deep knowledge of survival analysis, mixed models, and group sequential designs
+- Demonstrated experience supporting regulatory submissions (NDA/BLA)
+
+Preferred qualifications
+- Experience with R and with Bayesian adaptive trial designs
+- Familiarity with CDISC SDTM and ADaM standards
+- Prior experience in oncology therapeutic areas
+
+Compensation and benefits
+Base salary range: $145,000 - $175,000 per year, depending on experience.
+Annual bonus target of 12%, 401(k) match, and 25 days of paid time off.
+
+Work authorization
+Applicants must be legally authorized to work in the United States. Northline
+Clinical Research is unable to provide visa sponsorship for this position at
+this time.
