@@ -1,117 +1,50 @@
-from job_search_agent.job_matcher import JobMatcher
-from job_search_agent.models import (
-    CandidateProfile,
-    Education,
-    JobEvaluation,
-    JobRequirements,
-    Recommendation,
-    Skills,
+from conftest import (
+    DEFAULT_SCORING,
+    PERMISSIVE_FILTERS,
+    FakeAIClient,
+    make_evaluation,
+    make_profile,
+    make_requirements,
+    make_scores,
 )
 
-class FakeAIClient:
-    def evaluate_job(self, prompt: str) -> JobEvaluation:
-        return JobEvaluation(
-            job_title="Biostatistician",
-            company="Example Pharma",
-            skills_score=90,
-            education_score=100,
-            experience_score=70,
-            career_relevance_score=95,
-            strengths=[
-                "Strong R skills",
-                "Relevant statistics background",
-            ],
-            missing_requirements=[
-                "SAS",
-            ],
-            reasoning="The candidate matches most core requirements.",
-            requirements=JobRequirements(
-                        minimum_years_experience=5,
-                        required_degree="Master's",
-                        required_skills=["R"],
-                        preferred_skills=["SAS"],
-                        )
-        )
+from job_search_agent.candidate import WorkAuthorization
+from job_search_agent.config_models import (
+    ExperienceFilterConfig,
+    FilterConfig,
+)
+from job_search_agent.job_matcher import JobMatcher
+from job_search_agent.models import Recommendation, SponsorshipStance
 
-def create_test_profile() -> CandidateProfile:
-    return CandidateProfile(
-        target_roles=[
-            "Biostatistician",
-            "Data Analyst",
-        ],
-        education=Education(
-            degree="Master's",
-            field="Biostatistics",
-        ),
-        skills=Skills(
-            programming=[
-                "Python",
-                "R",
-                "SQL",
-            ],
-            statistics=[
-                "Regression",
-                "Survival Analysis",
-                "GLM",
-            ],
-        ),
-        experience_level="entry_level",
+
+def build_matcher(
+    evaluation=None,
+    filter_config=None,
+) -> JobMatcher:
+    return JobMatcher(
+        ai_client=FakeAIClient(evaluation or make_evaluation()),
+        scoring_config=DEFAULT_SCORING,
+        filter_config=filter_config or PERMISSIVE_FILTERS,
     )
+
 
 def test_job_matcher_calculates_correct_score():
-    ai_client = FakeAIClient()
-
-    weights = {
-        "skills": 0.35,
-        "education": 0.20,
-        "experience": 0.25,
-        "career_relevance": 0.20,
-    }
-
-    thresholds = {
-        "strongly_apply": 85,
-        "apply": 70,
-        "maybe": 55,
-    }
-
-    matcher = JobMatcher(
-    ai_client=ai_client,
-    weights=weights,
-    thresholds=thresholds,
-    filter_config={"max_required_experience_years": 10},
-    )
-
-    profile = create_test_profile()
-
-    result = matcher.match(
-        profile=profile,
+    result = build_matcher().match(
+        profile=make_profile(),
         job_description="Example job description",
     )
 
-    assert result.overall_score == 88.0
-    assert result.recommendation == Recommendation.STRONGLY_APPLY
+    assert result.overall_score == 84.5
+    assert result.recommendation == Recommendation.APPLY
+    assert result.scores.skills == 80
+    assert result.scores.education == 100
+    assert result.scores.experience == 70
+    assert result.scores.career_relevance == 95
+
 
 def test_job_matcher_preserves_evaluation_details():
-    matcher = JobMatcher(
-    ai_client=FakeAIClient(),
-    weights={
-        "skills": 0.35,
-        "education": 0.20,
-        "experience": 0.25,
-        "career_relevance": 0.20,
-    },
-    thresholds={
-        "strongly_apply": 85,
-        "apply": 70,
-        "maybe": 55,
-    },
-    filter_config={
-        "max_required_experience_years": 10,
-    },
-    )
-
-    result = matcher.match(
-        profile=create_test_profile(),
+    result = build_matcher().match(
+        profile=make_profile(),
         job_description="Example job description",
     )
 
@@ -120,30 +53,188 @@ def test_job_matcher_preserves_evaluation_details():
     assert "SAS" in result.missing_requirements
     assert "Strong R skills" in result.strengths
 
+
 def test_job_matcher_skips_job_with_too_much_required_experience():
-    matcher = JobMatcher(
-        ai_client=FakeAIClient(),
-        weights={
-            "skills": 0.35,
-            "education": 0.20,
-            "experience": 0.25,
-            "career_relevance": 0.20,
-        },
-        thresholds={
-            "strongly_apply": 85,
-            "apply": 70,
-            "maybe": 55,
-        },
-        filter_config={
-            "max_required_experience_years": 2,
-        },
+    filter_config = FilterConfig(
+        experience=ExperienceFilterConfig(
+            enabled=True,
+            max_required_years=2,
+            tolerance_years=0,
+        ),
     )
 
-    result = matcher.match(
-        profile=create_test_profile(),
+    result = build_matcher(filter_config=filter_config).match(
+        profile=make_profile(),
         job_description="Example",
     )
 
     assert result.passes_hard_filters is False
     assert result.recommendation == Recommendation.SKIP
     assert len(result.hard_filter_reasons) == 1
+
+
+def test_job_matcher_records_source_url():
+    result = build_matcher().match(
+        profile=make_profile(),
+        job_description="Example",
+        source_url="https://example.com/jobs/1",
+    )
+
+    assert result.source_url == "https://example.com/jobs/1"
+
+
+def test_job_matcher_sends_profile_and_posting_to_the_model():
+    ai_client = FakeAIClient(make_evaluation())
+
+    matcher = JobMatcher(
+        ai_client=ai_client,
+        scoring_config=DEFAULT_SCORING,
+        filter_config=PERMISSIVE_FILTERS,
+    )
+
+    matcher.match(
+        profile=make_profile(),
+        job_description="Unique posting text",
+    )
+
+    prompt = ai_client.prompts[0]
+
+    assert "Unique posting text" in prompt
+    assert "Biostatistics" in prompt
+    assert "Do not compute an overall score." in prompt
+
+
+def test_concerns_are_reported_without_changing_the_verdict():
+    """A non-sponsoring employer must not turn a good match into a SKIP."""
+    evaluation = make_evaluation(
+        requirements=make_requirements(
+            sponsorship=SponsorshipStance.NOT_OFFERED,
+        ),
+    )
+
+    profile = make_profile(
+        work_authorization=WorkAuthorization(
+            status="F-1 student; eligible for OPT/STEM OPT",
+            requires_sponsorship=False,
+            is_citizen_or_permanent_resident=False,
+            requires_future_sponsorship=True,
+        ),
+    )
+
+    result = build_matcher(evaluation=evaluation).match(
+        profile=profile,
+        job_description=(
+            "Example Pharma is hiring.\n"
+            "We do not provide visa sponsorship."
+        ),
+    )
+
+    assert result.passes_hard_filters is True
+    assert result.recommendation == Recommendation.APPLY
+    assert result.overall_score == 84.5
+    assert len(result.concerns) == 1
+    assert "does not offer visa sponsorship" in result.concerns[0]
+
+
+def test_concerns_are_empty_when_nothing_applies():
+    result = build_matcher().match(
+        profile=make_profile(),
+        job_description="Example",
+    )
+
+    assert result.concerns == []
+
+
+def test_permanent_authorization_requirement_forces_skip():
+    evaluation = make_evaluation(
+        requirements=make_requirements(
+            sponsorship=SponsorshipStance.PERMANENT_AUTHORIZATION_REQUIRED,
+        ),
+    )
+
+    profile = make_profile(
+        work_authorization=WorkAuthorization(
+            status="F-1 student; eligible for OPT/STEM OPT",
+            requires_sponsorship=False,
+            is_citizen_or_permanent_resident=False,
+            requires_future_sponsorship=True,
+        ),
+    )
+
+    result = build_matcher(evaluation=evaluation).match(
+        profile=profile,
+        job_description=(
+            "Example Pharma is hiring.\n"
+            "This position is not open to F-1 candidates."
+        ),
+    )
+
+    assert result.passes_hard_filters is False
+    assert result.recommendation == Recommendation.SKIP
+    assert result.concerns == []
+
+
+def test_python_overrides_a_wrong_llm_sponsorship_stance():
+    """Quoted F-1 rejection must hard-filter even if the model said not_offered."""
+    evaluation = make_evaluation(
+        requirements=make_requirements(
+            minimum_years_experience=1,
+            sponsorship=SponsorshipStance.NOT_OFFERED,
+            sponsorship_language="This position is not open to F-1 candidates.",
+        ),
+    )
+
+    profile = make_profile(
+        work_authorization=WorkAuthorization(
+            status="F-1 student; eligible for OPT/STEM OPT",
+            requires_sponsorship=False,
+            is_citizen_or_permanent_resident=False,
+            requires_future_sponsorship=True,
+        ),
+    )
+
+    result = build_matcher(evaluation=evaluation).match(
+        profile=profile,
+        job_description="This position is not open to F-1 candidates.",
+    )
+
+    assert (
+        result.requirements.sponsorship
+        is SponsorshipStance.PERMANENT_AUTHORIZATION_REQUIRED
+    )
+    assert result.passes_hard_filters is False
+    assert result.recommendation == Recommendation.SKIP
+    assert result.overall_score == 84.5
+    assert result.scores.skills == 80
+    assert result.concerns == []
+
+
+def test_job_matcher_ignores_the_llm_skills_score():
+    evaluation = make_evaluation(scores=make_scores(skills=12))
+
+    result = build_matcher(evaluation=evaluation).match(
+        profile=make_profile(),
+        job_description="Example",
+    )
+
+    assert result.scores.skills == 80
+    assert result.scores.education == 100
+    assert result.scores.experience == 70
+    assert result.scores.career_relevance == 95
+
+
+def test_job_matcher_keeps_extracted_requirements():
+    evaluation = make_evaluation(
+        requirements=make_requirements(
+            location="Remote",
+            preferred_skills=["SAS", "CDISC"],
+        ),
+    )
+
+    result = build_matcher(evaluation=evaluation).match(
+        profile=make_profile(),
+        job_description="Example",
+    )
+
+    assert result.location == "Remote"
+    assert result.requirements.preferred_skills == ["SAS", "CDISC"]

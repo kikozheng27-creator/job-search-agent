@@ -1,16 +1,23 @@
 import os
 
+import truststore
 from dotenv import load_dotenv
 from openai import OpenAI
-from job_search_agent.models import JobAnalysis
+
 from job_search_agent.models import JobEvaluation
 
 
 load_dotenv()
 
+# The openai SDK verifies TLS against certifi's bundle, which omits roots that
+# only the operating system trusts -- including those added by local
+# TLS-inspecting security software. Verification stays fully enabled; this only
+# changes which trust store it is checked against.
+truststore.inject_into_ssl()
+
 
 class AIClient:
-    def __init__(self):
+    def __init__(self) -> None:
         api_key = os.getenv("OPENAI_API_KEY")
         model = os.getenv("OPENAI_MODEL")
 
@@ -23,23 +30,6 @@ class AIClient:
         self.model = model
         self.client = OpenAI(api_key=api_key)
 
-    def generate(self, prompt: str) -> str:
-        response = self.client.responses.create(
-            model=self.model,
-            input=prompt,
-        )
-
-        return response.output_text
-
-    def analyze_job(self, prompt: str) -> JobAnalysis:
-        response = self.client.responses.parse(
-            model=self.model,
-            input=prompt,
-            text_format=JobAnalysis,
-        )
-
-        return response.output_parsed
-
     def evaluate_job(self, prompt: str) -> JobEvaluation:
         response = self.client.responses.parse(
             model=self.model,
@@ -47,4 +37,11 @@ class AIClient:
             text_format=JobEvaluation,
         )
 
-        return response.output_parsed
+        evaluation = response.output_parsed
+
+        if evaluation is None:
+            raise ValueError(
+                "The model did not return a parsable job evaluation."
+            )
+
+        return evaluation
