@@ -3,6 +3,7 @@ from job_search_agent.models import (
     CandidateProfile,
     Education,
     JobEvaluation,
+    JobRequirements,
     Recommendation,
     Skills,
 )
@@ -24,6 +25,12 @@ class FakeAIClient:
                 "SAS",
             ],
             reasoning="The candidate matches most core requirements.",
+            requirements=JobRequirements(
+                        minimum_years_experience=5,
+                        required_degree="Master's",
+                        required_skills=["R"],
+                        preferred_skills=["SAS"],
+                        )
         )
 
 def create_test_profile() -> CandidateProfile:
@@ -68,9 +75,10 @@ def test_job_matcher_calculates_correct_score():
     }
 
     matcher = JobMatcher(
-        ai_client=ai_client,
-        weights=weights,
-        thresholds=thresholds,
+    ai_client=ai_client,
+    weights=weights,
+    thresholds=thresholds,
+    filter_config={"max_required_experience_years": 10},
     )
 
     profile = create_test_profile()
@@ -85,6 +93,35 @@ def test_job_matcher_calculates_correct_score():
 
 def test_job_matcher_preserves_evaluation_details():
     matcher = JobMatcher(
+    ai_client=FakeAIClient(),
+    weights={
+        "skills": 0.35,
+        "education": 0.20,
+        "experience": 0.25,
+        "career_relevance": 0.20,
+    },
+    thresholds={
+        "strongly_apply": 85,
+        "apply": 70,
+        "maybe": 55,
+    },
+    filter_config={
+        "max_required_experience_years": 10,
+    },
+    )
+
+    result = matcher.match(
+        profile=create_test_profile(),
+        job_description="Example job description",
+    )
+
+    assert result.job_title == "Biostatistician"
+    assert result.company == "Example Pharma"
+    assert "SAS" in result.missing_requirements
+    assert "Strong R skills" in result.strengths
+
+def test_job_matcher_skips_job_with_too_much_required_experience():
+    matcher = JobMatcher(
         ai_client=FakeAIClient(),
         weights={
             "skills": 0.35,
@@ -97,14 +134,16 @@ def test_job_matcher_preserves_evaluation_details():
             "apply": 70,
             "maybe": 55,
         },
+        filter_config={
+            "max_required_experience_years": 2,
+        },
     )
 
     result = matcher.match(
         profile=create_test_profile(),
-        job_description="Example job description",
+        job_description="Example",
     )
 
-    assert result.job_title == "Biostatistician"
-    assert result.company == "Example Pharma"
-    assert "SAS" in result.missing_requirements
-    assert "Strong R skills" in result.strengths
+    assert result.passes_hard_filters is False
+    assert result.recommendation == Recommendation.SKIP
+    assert len(result.hard_filter_reasons) == 1

@@ -71,13 +71,17 @@ def run() -> None:
     logging.info("Loading scoring configuration...")
     scoring_config = load_config("config/scoring.yaml")
 
+    logging.info("Loading filter configuration...")
+    filter_config = load_config("config/filters.yaml")
+
     logging.info("Initializing AI client...")
     ai_client = AIClient()
 
     matcher = JobMatcher(
-        ai_client=ai_client,
-        weights=scoring_config["weights"],
-        thresholds=scoring_config["thresholds"],
+    ai_client=ai_client,
+    weights=scoring_config["weights"],
+    thresholds=scoring_config["thresholds"],
+    filter_config=filter_config,
     )
 
     logging.info("Analyzing job...")
