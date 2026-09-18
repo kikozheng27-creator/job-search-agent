@@ -37,6 +37,21 @@ def test_loads_valid_scoring_config(tmp_path):
 
     assert config.weights.skills == 0.35
     assert config.thresholds.apply == 70
+    assert config.skills.required_weight == 0.80
+    assert config.skills.preferred_weight == 0.20
+
+
+def test_skills_weights_that_do_not_sum_to_one_are_rejected(tmp_path):
+    contents = VALID_SCORING + """
+skills:
+  required_weight: 0.9
+  preferred_weight: 0.2
+"""
+
+    with pytest.raises(ValidationError) as error:
+        load_scoring_config(write_yaml(tmp_path, contents))
+
+    assert "must sum to 1.0" in str(error.value)
 
 
 def test_missing_config_file_raises_file_not_found(tmp_path):
@@ -158,4 +173,5 @@ def test_shipped_config_files_are_valid():
     filters = FilterConfig.model_validate(load_config(config_dir / "filters.yaml"))
 
     assert scoring.thresholds.strongly_apply > scoring.thresholds.apply
+    assert scoring.skills.required_weight + scoring.skills.preferred_weight == 1.0
     assert filters.experience.max_required_years >= 0

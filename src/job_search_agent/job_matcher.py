@@ -9,6 +9,8 @@ from job_search_agent.scoring import (
     calculate_overall_score,
     get_recommendation,
 )
+from job_search_agent.skill_scorer import score_skills
+from job_search_agent.sponsorship_classifier import apply_sponsorship_classification
 
 
 class JobMatcher:
@@ -30,6 +32,17 @@ class JobMatcher:
     ) -> JobAnalysis:
         prompt = build_evaluation_prompt(profile, job_description)
         evaluation = self.ai_client.evaluate_job(prompt)
+
+        apply_sponsorship_classification(
+            evaluation.requirements,
+            job_description,
+        )
+
+        evaluation.scores.skills = score_skills(
+            profile,
+            evaluation.requirements,
+            self.scoring_config.skills,
+        )
 
         overall_score = calculate_overall_score(
             evaluation.scores,

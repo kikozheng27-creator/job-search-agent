@@ -46,10 +46,10 @@ def test_analysis_runs_against_the_shipped_configuration():
 
     assert result.company == "Example Pharma"
     assert result.job_title == "Biostatistician"
-    assert result.overall_score == 88.0
+    assert result.overall_score == 84.5
     assert result.source_url == "https://example.com/jobs/1"
     assert result.passes_hard_filters is True
-    assert result.recommendation == Recommendation.STRONGLY_APPLY
+    assert result.recommendation == Recommendation.APPLY
 
 
 def test_shipped_configuration_filters_a_senior_posting():
@@ -68,7 +68,7 @@ def test_shipped_configuration_filters_a_senior_posting():
         config_dir=SHIPPED_CONFIG_DIR,
     )
 
-    assert result.overall_score == 88.0
+    assert result.overall_score == 84.5
     assert result.passes_hard_filters is False
     assert result.recommendation == Recommendation.SKIP
     assert len(result.hard_filter_reasons) == 1
@@ -90,7 +90,7 @@ def test_shipped_configuration_allows_a_posting_inside_the_tolerance():
         )
 
         assert result.passes_hard_filters is True
-        assert result.recommendation == Recommendation.STRONGLY_APPLY
+        assert result.recommendation == Recommendation.APPLY
 
 
 def test_extracted_requirements_survive_to_the_final_analysis():
@@ -100,7 +100,7 @@ def test_extracted_requirements_survive_to_the_final_analysis():
             employment_type="full_time",
             seniority_level="entry_level",
             sponsorship=SponsorshipStance.OFFERED,
-            sponsorship_language="We sponsor work visas.",
+            sponsorship_language="We do not provide visa sponsorship.",
             salary_range={
                 "minimum": 90000,
                 "maximum": 110000,
@@ -111,7 +111,10 @@ def test_extracted_requirements_survive_to_the_final_analysis():
     )
 
     result = analyze_job_description(
-        job_description="Example",
+        job_description=(
+            "Example Pharma is hiring.\n"
+            "We do not provide visa sponsorship."
+        ),
         ai_client=FakeAIClient(evaluation),
         config_dir=SHIPPED_CONFIG_DIR,
     )
@@ -120,8 +123,9 @@ def test_extracted_requirements_survive_to_the_final_analysis():
 
     assert requirements.employment_type.value == "full_time"
     assert requirements.seniority_level.value == "entry_level"
-    assert requirements.sponsorship == SponsorshipStance.OFFERED
     assert requirements.salary_range.maximum == 110000
+    assert requirements.sponsorship_language == "We do not provide visa sponsorship."
+    assert requirements.sponsorship is SponsorshipStance.NOT_OFFERED
 
 
 def test_the_real_profile_is_sent_to_the_model():
@@ -299,8 +303,8 @@ def test_analyze_and_save_writes_to_the_tracker(tmp_path, monkeypatch, capsys):
     output = capsys.readouterr().out
 
     assert exit_code == 0
-    assert "Overall Match: 88.0 / 100" in output
-    assert "Recommendation: STRONGLY_APPLY" in output
+    assert "Overall Match: 84.5 / 100" in output
+    assert "Recommendation: APPLY" in output
 
     with JobTracker(database) as tracker:
         jobs = tracker.list_jobs()
@@ -309,7 +313,7 @@ def test_analyze_and_save_writes_to_the_tracker(tmp_path, monkeypatch, capsys):
     assert jobs[0].status == ApplicationStatus.APPLIED
     assert jobs[0].notes == "Applied via referral"
     assert jobs[0].source_url == "https://example.com/jobs/7"
-    assert jobs[0].match_score == 88.0
+    assert jobs[0].match_score == 84.5
 
 
 def test_analyze_without_save_leaves_the_tracker_empty(

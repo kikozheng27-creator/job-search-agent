@@ -8,3 +8,19 @@ thresholds:
   strongly_apply: 85
   apply: 70
   maybe: 55
+
+# Python owns skills_score. required_weight + preferred_weight must sum to 1.0.
+skills:
+  required_weight: 0.80
+  preferred_weight: 0.20
+  aliases:
+    "r programming": R
+    "r language": R
+    "python programming": Python
+    "python 3": Python
+    python3: Python
+    "structured query language": SQL
+    "survival analyses": "Survival Analysis"
+    "generalized linear models": GLM
+    "generalised linear models": GLM
+    "sas programming": SAS
