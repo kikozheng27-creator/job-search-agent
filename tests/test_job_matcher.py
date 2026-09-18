@@ -5,6 +5,7 @@ from conftest import (
     make_evaluation,
     make_profile,
     make_requirements,
+    make_scores,
 )
 
 from job_search_agent.candidate import WorkAuthorization
@@ -33,8 +34,12 @@ def test_job_matcher_calculates_correct_score():
         job_description="Example job description",
     )
 
-    assert result.overall_score == 88.0
-    assert result.recommendation == Recommendation.STRONGLY_APPLY
+    assert result.overall_score == 84.5
+    assert result.recommendation == Recommendation.APPLY
+    assert result.scores.skills == 80
+    assert result.scores.education == 100
+    assert result.scores.experience == 70
+    assert result.scores.career_relevance == 95
 
 
 def test_job_matcher_preserves_evaluation_details():
@@ -118,12 +123,15 @@ def test_concerns_are_reported_without_changing_the_verdict():
 
     result = build_matcher(evaluation=evaluation).match(
         profile=profile,
-        job_description="Example",
+        job_description=(
+            "Example Pharma is hiring.\n"
+            "We do not provide visa sponsorship."
+        ),
     )
 
     assert result.passes_hard_filters is True
-    assert result.recommendation == Recommendation.STRONGLY_APPLY
-    assert result.overall_score == 88.0
+    assert result.recommendation == Recommendation.APPLY
+    assert result.overall_score == 84.5
     assert len(result.concerns) == 1
     assert "does not offer visa sponsorship" in result.concerns[0]
 
@@ -155,12 +163,64 @@ def test_permanent_authorization_requirement_forces_skip():
 
     result = build_matcher(evaluation=evaluation).match(
         profile=profile,
-        job_description="Example",
+        job_description=(
+            "Example Pharma is hiring.\n"
+            "This position is not open to F-1 candidates."
+        ),
     )
 
     assert result.passes_hard_filters is False
     assert result.recommendation == Recommendation.SKIP
     assert result.concerns == []
+
+
+def test_python_overrides_a_wrong_llm_sponsorship_stance():
+    """Quoted F-1 rejection must hard-filter even if the model said not_offered."""
+    evaluation = make_evaluation(
+        requirements=make_requirements(
+            minimum_years_experience=1,
+            sponsorship=SponsorshipStance.NOT_OFFERED,
+            sponsorship_language="This position is not open to F-1 candidates.",
+        ),
+    )
+
+    profile = make_profile(
+        work_authorization=WorkAuthorization(
+            status="F-1 student; eligible for OPT/STEM OPT",
+            requires_sponsorship=False,
+            is_citizen_or_permanent_resident=False,
+            requires_future_sponsorship=True,
+        ),
+    )
+
+    result = build_matcher(evaluation=evaluation).match(
+        profile=profile,
+        job_description="This position is not open to F-1 candidates.",
+    )
+
+    assert (
+        result.requirements.sponsorship
+        is SponsorshipStance.PERMANENT_AUTHORIZATION_REQUIRED
+    )
+    assert result.passes_hard_filters is False
+    assert result.recommendation == Recommendation.SKIP
+    assert result.overall_score == 84.5
+    assert result.scores.skills == 80
+    assert result.concerns == []
+
+
+def test_job_matcher_ignores_the_llm_skills_score():
+    evaluation = make_evaluation(scores=make_scores(skills=12))
+
+    result = build_matcher(evaluation=evaluation).match(
+        profile=make_profile(),
+        job_description="Example",
+    )
+
+    assert result.scores.skills == 80
+    assert result.scores.education == 100
+    assert result.scores.experience == 70
+    assert result.scores.career_relevance == 95
 
 
 def test_job_matcher_keeps_extracted_requirements():

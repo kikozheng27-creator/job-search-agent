@@ -47,9 +47,30 @@ class Thresholds(StrictModel):
         return self
 
 
+class SkillsScoringConfig(StrictModel):
+    """Deterministic skills matching. Aliases map a variant onto a canonical name."""
+
+    required_weight: float = Field(default=0.80, ge=0, le=1)
+    preferred_weight: float = Field(default=0.20, ge=0, le=1)
+    aliases: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def skill_weights_must_sum_to_one(self) -> "SkillsScoringConfig":
+        total = self.required_weight + self.preferred_weight
+
+        if abs(total - 1.0) > 0.001:
+            raise ValueError(
+                "skills.required_weight and skills.preferred_weight must sum "
+                f"to 1.0, but they sum to {total:.3f}."
+            )
+
+        return self
+
+
 class ScoringConfig(StrictModel):
     weights: ScoringWeights
     thresholds: Thresholds
+    skills: SkillsScoringConfig = Field(default_factory=SkillsScoringConfig)
 
 
 class ExperienceFilterConfig(StrictModel):
