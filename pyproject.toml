@@ -13,6 +13,8 @@ dependencies = [
     "openai>=1.40",
     "python-dotenv>=1",
     "truststore>=0.10",
+    "requests>=2.32",
+    "beautifulsoup4>=4.12",
 ]
 
 [project.optional-dependencies]
