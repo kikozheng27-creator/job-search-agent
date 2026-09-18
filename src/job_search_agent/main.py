@@ -13,6 +13,7 @@ from job_search_agent.config_loader import (
 from job_search_agent.job_matcher import JobMatcher
 from job_search_agent.logging_config import setup_logging
 from job_search_agent.models import JobAnalysis
+from job_search_agent.page_loader import load_job_description_from_url
 from job_search_agent.protocols import JobEvaluator
 from job_search_agent.reporting import (
     print_report,
@@ -44,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Analyze a job description.",
     )
 
-    source = analyze.add_mutually_exclusive_group(required=True)
+    source = analyze.add_mutually_exclusive_group(required=False)
 
     source.add_argument(
         "--jd",
@@ -59,7 +60,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze.add_argument(
         "--url",
-        help="Source URL of the posting, recorded with the analysis.",
+        help=(
+            "Public job-posting URL. Used as the input source when --jd and "
+            "--stdin are omitted; otherwise recorded with the analysis."
+        ),
     )
 
     analyze.add_argument(
@@ -107,6 +111,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.command == "analyze" and not args.jd and not args.stdin and not args.url:
+        parser.error("one of the arguments --jd --stdin --url is required")
+
+    return args
+
+
 def read_job_description_from_file(path: str) -> str:
     jd_path = Path(path)
 
@@ -135,8 +149,12 @@ def get_job_description(args: argparse.Namespace) -> str:
         logging.info("Reading job description from stdin...")
         return read_job_description_from_stdin()
 
-    logging.info("Reading job description from file...")
-    return read_job_description_from_file(args.jd)
+    if args.jd:
+        logging.info("Reading job description from file...")
+        return read_job_description_from_file(args.jd)
+
+    logging.info("Fetching job description from URL...")
+    return load_job_description_from_url(args.url)
 
 
 def analyze_job_description(
@@ -214,7 +232,7 @@ def run_list(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> int:
     setup_logging()
 
-    args = build_parser().parse_args(argv)
+    args = parse_args(argv)
 
     handlers = {
         "analyze": run_analyze,

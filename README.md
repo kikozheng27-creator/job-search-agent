@@ -55,13 +55,19 @@ Analyze a posting from a file:
 .\.venv\Scripts\python.exe -m job_search_agent.main analyze --jd jobs/example.txt
 ```
 
+Analyze from a public job URL:
+
+```powershell
+.\.venv\Scripts\python.exe -m job_search_agent.main analyze --url "https://example.com/jobs/123"
+```
+
 Analyze from stdin:
 
 ```powershell
 Get-Content jobs/example.txt | .\.venv\Scripts\python.exe -m job_search_agent.main analyze --stdin
 ```
 
-Analyze and record it in the tracker:
+Analyze a local file and record a source URL with the tracker:
 
 ```powershell
 .\.venv\Scripts\python.exe -m job_search_agent.main analyze `
@@ -129,6 +135,7 @@ src/job_search_agent/
   ai_client.py      OpenAI structured-output client
   protocols.py      JobEvaluator protocol (keeps openai out of unit tests)
   job_matcher.py    Orchestration
+  page_loader.py    URL fetch and HTML-to-text adapter
   scoring.py        Overall score and recommendation (pure functions)
   filters.py        Hard filters (pure functions)
   concerns.py       Non-blocking warnings (pure functions)
