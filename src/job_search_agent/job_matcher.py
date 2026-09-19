@@ -1,3 +1,4 @@
+from job_search_agent.authorization_claims import sanitize_analysis_prose
 from job_search_agent.candidate import CandidateProfile
 from job_search_agent.concerns import collect_concerns
 from job_search_agent.config_models import FilterConfig, ScoringConfig
@@ -5,6 +6,7 @@ from job_search_agent.filters import check_hard_filters
 from job_search_agent.models import JobAnalysis, Recommendation
 from job_search_agent.prompts import build_evaluation_prompt
 from job_search_agent.protocols import JobEvaluator
+from job_search_agent.reasoning import build_fallback_reasoning
 from job_search_agent.scoring import (
     calculate_overall_score,
     get_recommendation,
@@ -65,6 +67,22 @@ class JobMatcher:
         else:
             recommendation = Recommendation.SKIP
 
+        strengths, missing_requirements, reasoning = sanitize_analysis_prose(
+            evaluation.strengths,
+            evaluation.missing_requirements,
+            evaluation.reasoning,
+            evaluation.requirements.sponsorship,
+        )
+
+        if not reasoning:
+            reasoning = build_fallback_reasoning(
+                requirements=evaluation.requirements,
+                scores=evaluation.scores,
+                recommendation=recommendation,
+                hard_filter_reasons=hard_filter_reasons,
+                missing_requirements=missing_requirements,
+            )
+
         return JobAnalysis(
             requirements=evaluation.requirements,
             scores=evaluation.scores,
@@ -73,8 +91,8 @@ class JobMatcher:
             passes_hard_filters=passes_hard_filters,
             hard_filter_reasons=hard_filter_reasons,
             concerns=collect_concerns(evaluation.requirements, profile),
-            strengths=evaluation.strengths,
-            missing_requirements=evaluation.missing_requirements,
-            reasoning=evaluation.reasoning,
+            strengths=strengths,
+            missing_requirements=missing_requirements,
+            reasoning=reasoning,
             source_url=source_url,
         )
