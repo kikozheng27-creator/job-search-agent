@@ -4,6 +4,7 @@ from conftest import (
     DEFAULT_SCORING,
     PERMISSIVE_FILTERS,
     FakeAIClient,
+    make_analysis,
     make_evaluation,
     make_profile,
     make_requirements,
@@ -226,6 +227,29 @@ def test_unquoted_llm_stance_does_not_survive_silence_in_the_posting():
     assert requirements.sponsorship is SponsorshipStance.NOT_MENTIONED
 
 
+def test_python_backed_stance_survives_job_analysis_without_llm_quote():
+    """Nested validation must not treat a JD-backed stance as an unquoted invention."""
+    requirements = make_requirements(
+        minimum_years_experience=1,
+        sponsorship=SponsorshipStance.NOT_MENTIONED,
+        sponsorship_language=None,
+    )
+
+    apply_sponsorship_classification(
+        requirements,
+        "This position is not open to F-1 candidates.",
+    )
+
+    analysis = make_analysis(requirements=requirements)
+
+    assert (
+        analysis.requirements.sponsorship
+        is SponsorshipStance.PERMANENT_AUTHORIZATION_REQUIRED
+    )
+    assert analysis.requirements.sponsorship_language
+    assert "not open to F-1" in analysis.requirements.sponsorship_language
+
+
 def test_classifier_does_not_change_component_scores_in_the_matcher():
     evaluation = make_evaluation(
         requirements=make_requirements(
@@ -250,3 +274,98 @@ def test_classifier_does_not_change_component_scores_in_the_matcher():
     assert result.scores.skills == 80
     assert result.recommendation == Recommendation.SKIP
     assert result.passes_hard_filters is False
+
+
+# --- clearance / government language is not authorization evidence ---------
+
+
+def test_ts_sci_ci_poly_alone_is_not_mentioned():
+    assert classify_sponsorship("TS/SCI w/ CI Poly") is SponsorshipStance.NOT_MENTIONED
+
+
+def test_top_secret_clearance_alone_is_not_mentioned():
+    assert (
+        classify_sponsorship("Top Secret clearance required")
+        is SponsorshipStance.NOT_MENTIONED
+    )
+
+
+def test_eligible_for_security_clearance_is_not_mentioned():
+    assert (
+        classify_sponsorship("Must be eligible to obtain a security clearance")
+        is SponsorshipStance.NOT_MENTIONED
+    )
+
+
+def test_national_security_and_government_contractor_are_not_mentioned():
+    posting = (
+        "Assertive Professionals is seeking a Data Scientist supporting our "
+        "National Security customer. This is a government contractor role."
+    )
+
+    assert classify_sponsorship(posting) is SponsorshipStance.NOT_MENTIONED
+
+
+def test_us_citizenship_required_for_clearance_is_citizenship():
+    sentence = "U.S. citizenship required for TS/SCI clearance"
+
+    assert classify_sentence(sentence) is SponsorshipStance.CITIZENSHIP_REQUIRED
+    assert classify_sponsorship(sentence) is SponsorshipStance.CITIZENSHIP_REQUIRED
+
+
+def test_us_citizenship_required_to_obtain_clearance_is_citizenship():
+    sentence = (
+        "U.S. citizenship is required to obtain the required clearance."
+    )
+
+    assert classify_sentence(sentence) is SponsorshipStance.CITIZENSHIP_REQUIRED
+
+
+def test_open_only_to_us_citizens_is_citizenship():
+    sentence = "This position is open only to U.S. citizens."
+
+    assert classify_sentence(sentence) is SponsorshipStance.CITIZENSHIP_REQUIRED
+
+
+def test_permanent_unrestricted_authorization_still_classifies():
+    sentence = (
+        "Must have permanent unrestricted authorization to work in the "
+        "United States."
+    )
+
+    assert (
+        classify_sentence(sentence)
+        is SponsorshipStance.PERMANENT_AUTHORIZATION_REQUIRED
+    )
+
+
+def test_invented_now_or_future_quote_does_not_classify_clearance_posting():
+    posting = (
+        "TS/SCI w/ CI Poly\n"
+        "7 years of relevant experience\n"
+        "supporting our National Security customer"
+    )
+    invented = "must not now or in the future require sponsorship"
+
+    assert classify_sponsorship(posting) is SponsorshipStance.NOT_MENTIONED
+    assert classify_sponsorship(posting, invented) is SponsorshipStance.NOT_MENTIONED
+
+    requirements = make_requirements(
+        minimum_years_experience=7,
+        sponsorship=SponsorshipStance.PERMANENT_AUTHORIZATION_REQUIRED,
+        sponsorship_language=invented,
+    )
+    apply_sponsorship_classification(requirements, posting)
+
+    assert requirements.sponsorship is SponsorshipStance.NOT_MENTIONED
+    assert requirements.sponsorship_language is None
+
+
+def test_grounded_now_or_future_quote_still_classifies():
+    posting = read_fixture("08_no_sponsorship_now_or_future.txt")
+    quote = "Candidates must not now or in the future require visa sponsorship."
+
+    assert (
+        classify_sponsorship(posting, quote)
+        is SponsorshipStance.PERMANENT_AUTHORIZATION_REQUIRED
+    )
