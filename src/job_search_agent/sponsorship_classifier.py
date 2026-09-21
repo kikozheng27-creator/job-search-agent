@@ -227,6 +227,11 @@ def _quote_in_source(job_description: str, quote: str | None) -> bool:
     return bool(quoted) and quoted in _normalize(job_description)
 
 
+def quote_in_source(job_description: str, quote: str | None) -> bool:
+    """Public name for evaluation diagnostics. Same rule as classification."""
+    return _quote_in_source(job_description, quote)
+
+
 def classify_sponsorship(
     job_description: str,
     sponsorship_language: str | None = None,
