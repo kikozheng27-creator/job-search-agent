@@ -51,6 +51,83 @@ class SponsorshipStance(str, Enum):
     NOT_MENTIONED = "not_mentioned"
 
 
+class SkillLevel(str, Enum):
+    REQUIRED = "required"
+    PREFERRED = "preferred"
+
+
+class SkillClaim(BaseModel):
+    """One LLM-extracted skill plus optional quote and source-unit ids.
+
+    Unit ids are the source of truth when present. A free-form evidence
+    quote is optional and never creates a source unit.
+    """
+
+    name: str
+    level: SkillLevel = SkillLevel.REQUIRED
+    evidence: str = ""
+    source_unit_ids: list[str] = Field(default_factory=list)
+    category: str = "technical_skill"
+
+
+class UnitSkillItem(BaseModel):
+    """A skill the model found inside one evidence unit."""
+
+    name: str
+    category: str = "technical_skill"
+
+
+class UnitSkillDecision(BaseModel):
+    """The model's decision for one Python-derived evidence unit."""
+
+    source_unit_id: str
+    is_candidate_requirement: bool
+    skills: list[UnitSkillItem] = Field(default_factory=list)
+
+
+class SkillMention(BaseModel):
+    """One skill name enumerated from a single evidence unit."""
+
+    name: str
+    category: str = "technical_skill"
+
+
+class UnitSkillInventory(BaseModel):
+    """Exhaustive skill names the dedicated extractor found in one unit."""
+
+    source_unit_id: str
+    skills: list[SkillMention] = Field(default_factory=list)
+
+
+class SkillInventory(BaseModel):
+    """Narrow structured output for dedicated skill-name enumeration."""
+
+    units: list[UnitSkillInventory] = Field(default_factory=list)
+
+
+class SkillExtractionStatus(str, Enum):
+    """Whether dedicated skill extraction finished with full coverage."""
+
+    COMPLETE = "complete"
+    UNRESOLVED = "unresolved"
+    NOT_RUN = "not_run"
+
+
+class SkillExtractionReport(BaseModel):
+    """Coverage and completeness of the dedicated skill-inventory stage."""
+
+    status: SkillExtractionStatus = SkillExtractionStatus.NOT_RUN
+    expected_unit_ids: list[str] = Field(default_factory=list)
+    returned_unit_ids: list[str] = Field(default_factory=list)
+    missing_unit_ids: list[str] = Field(default_factory=list)
+    unexpected_unit_ids: list[str] = Field(default_factory=list)
+    unresolved_unit_ids: list[str] = Field(default_factory=list)
+    repair_attempted: bool = False
+    repaired_unit_ids: list[str] = Field(default_factory=list)
+    per_unit_skills: dict[str, list[str]] = Field(default_factory=dict)
+    skills_scored_from_inventory: bool = False
+
+
 class SalaryRange(BaseModel):
     minimum: float | None = None
     maximum: float | None = None
@@ -117,6 +194,8 @@ class JobEvaluation(BaseModel):
     strengths: list[str]
     missing_requirements: list[str]
     reasoning: str
+    skill_claims: list[SkillClaim] = Field(default_factory=list)
+    skill_unit_decisions: list[UnitSkillDecision] = Field(default_factory=list)
 
 
 class JobAnalysis(BaseModel):
@@ -140,6 +219,9 @@ class JobAnalysis(BaseModel):
 
     source_url: str | None = None
     analyzed_at: datetime = Field(default_factory=datetime.now)
+    skill_extraction: SkillExtractionReport = Field(
+        default_factory=SkillExtractionReport
+    )
 
     @property
     def company(self) -> str:

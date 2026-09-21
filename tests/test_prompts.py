@@ -17,6 +17,17 @@ def prompt(posting: str = "Some job posting text") -> str:
     return " ".join(build_evaluation_prompt(make_profile(), posting).split())
 
 
+def skill_prompt(posting: str = "Proficiency in Python is required.") -> str:
+    from job_search_agent.evidence_units import (
+        build_evidence_units,
+        skill_candidate_units,
+    )
+    from job_search_agent.prompts import build_skill_inventory_prompt
+
+    units = skill_candidate_units(build_evidence_units(posting))
+    return " ".join(build_skill_inventory_prompt(units).split())
+
+
 # --- experience scoring -----------------------------------------------------
 # Live run: a candidate with 0.5 years scored 25/100 against a "0-2 years"
 # posting, dragging a strong match down to MAYBE.
@@ -54,21 +65,29 @@ def test_absent_minimum_does_not_imply_a_requirement():
 
 
 def test_skills_must_be_normalized_to_concise_items():
-    text = prompt()
+    text = skill_prompt()
 
-    assert "Normalize every skill to a concise skill, tool, or competency" in text
+    assert "a concise skill as it would appear on a resume" in text
     assert "Do not copy prose fragments from the posting" in text
 
 
 def test_skill_qualifiers_are_stripped():
-    text = prompt()
+    text = skill_prompt()
 
     for qualifier in ("strong", "expert-level", "deep knowledge of", "preferred"):
         assert f'"{qualifier}"' in text
 
 
-def test_multi_skill_bullets_are_split():
-    assert "one entry per skill" in prompt()
+def test_skill_extraction_is_a_dedicated_enumeration_task():
+    main = prompt("Python is required.")
+    dedicated = skill_prompt("Python is required.")
+
+    assert "dedicated skill-inventory extraction step" in main
+    assert "Do not enumerate the posting's skill inventory" in main
+    assert "u001:" in dedicated
+    assert "Do not invent ids" in dedicated
+    assert "You enumerate skills" in dedicated
+    assert "Do not score education, experience, career relevance, or sponsorship" in dedicated
 
 
 # --- deliberately unchanged -------------------------------------------------

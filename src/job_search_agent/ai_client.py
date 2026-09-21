@@ -4,7 +4,7 @@ import truststore
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from job_search_agent.models import JobEvaluation
+from job_search_agent.models import JobEvaluation, SkillInventory
 
 
 load_dotenv()
@@ -17,6 +17,8 @@ truststore.inject_into_ssl()
 
 
 class AIClient:
+    supports_dedicated_skill_extraction = True
+
     def __init__(self) -> None:
         api_key = os.getenv("OPENAI_API_KEY")
         model = os.getenv("OPENAI_MODEL")
@@ -45,3 +47,19 @@ class AIClient:
             )
 
         return evaluation
+
+    def extract_skill_inventory(self, prompt: str) -> SkillInventory:
+        response = self.client.responses.parse(
+            model=self.model,
+            input=prompt,
+            text_format=SkillInventory,
+        )
+
+        inventory = response.output_parsed
+
+        if inventory is None:
+            raise ValueError(
+                "The model did not return a parsable skill inventory."
+            )
+
+        return inventory

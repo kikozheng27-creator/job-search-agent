@@ -44,6 +44,49 @@ def is_degree_requirement(name: str) -> bool:
     return bool(_DEGREE_LEAK.search(name))
 
 
+_NON_SKILL = re.compile(
+    r"""
+    (
+        \bclearance\b
+        | \bpolygraph\b
+        | \bpoly\b
+        | ts/?sci
+        | top\s+secret
+        | secret\s+clearance
+        | certificat\w*
+        | \bcertified\b
+        | \bcourse\b
+        | \btraining\b
+        | \bcurriculum\b
+        | \bsponsorship\b
+        | \bvisa\b
+        | \bcitizenship\b
+        | work\s+authorization
+        | years?\s+of\s+experience
+        | pep-?8
+        | coding\s+standards?
+        | integrated\s+development\s+environment
+        | \bides?\b
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def is_non_skill_requirement(name: str) -> bool:
+    """True for education, clearance, certs, training, authorization, or years."""
+    if not name.strip():
+        return True
+
+    if is_degree_requirement(name):
+        return True
+
+    if re.search(r"[a-z]{2,}\d{3,}", name, re.IGNORECASE):
+        return True
+
+    return bool(_NON_SKILL.search(name))
+
+
 def build_alias_lookup(aliases: dict[str, str]) -> dict[str, str]:
     lookup: dict[str, str] = {}
 
@@ -57,11 +100,16 @@ def build_alias_lookup(aliases: dict[str, str]) -> dict[str, str]:
 
 def canonical_skill(name: str, lookup: dict[str, str]) -> str:
     key = normalize_skill(name)
-    return lookup.get(key, key)
+    resolved = lookup.get(key, key)
+    return resolved.replace(" ", "")
 
 
 def filter_skill_names(names: list[str]) -> list[str]:
-    return [name for name in names if name.strip() and not is_degree_requirement(name)]
+    return [
+        name
+        for name in names
+        if name.strip() and not is_non_skill_requirement(name)
+    ]
 
 
 def candidate_skill_set(
@@ -112,3 +160,64 @@ def score_skills(
     )
 
     return int(round(min(100.0, max(0.0, raw))))
+
+
+def diagnose_skill_list(
+    extracted: list[str],
+    candidate: set[str],
+    lookup: dict[str, str],
+) -> dict:
+    """Explain one extracted skill list. Does not change the score formula."""
+    raw = list(extracted)
+    dropped_degree_leaks = [
+        name for name in raw if name.strip() and is_degree_requirement(name)
+    ]
+    filtered = filter_skill_names(raw)
+    normalized = [canonical_skill(name, lookup) for name in filtered]
+    matched = [
+        name
+        for name in filtered
+        if canonical_skill(name, lookup) in candidate
+    ]
+    missing = [
+        name
+        for name in filtered
+        if canonical_skill(name, lookup) not in candidate
+    ]
+
+    return {
+        "raw": raw,
+        "normalized": normalized,
+        "matched": matched,
+        "missing": missing,
+        "dropped_degree_leaks": dropped_degree_leaks,
+        "match_rate": round(match_rate(extracted, candidate, lookup), 4),
+    }
+
+
+def diagnose_skills(
+    profile: CandidateProfile,
+    requirements: JobRequirements,
+    config: SkillsScoringConfig,
+) -> dict:
+    """Skill-match breakdown for evaluation. Reuses score_skills for the total."""
+    lookup = build_alias_lookup(config.aliases)
+    candidate = candidate_skill_set(profile, lookup)
+    required = diagnose_skill_list(
+        requirements.required_skills,
+        candidate,
+        lookup,
+    )
+    preferred = diagnose_skill_list(
+        requirements.preferred_skills,
+        candidate,
+        lookup,
+    )
+
+    return {
+        "required": required,
+        "preferred": preferred,
+        "required_match_rate": required["match_rate"],
+        "preferred_match_rate": preferred["match_rate"],
+        "skills_score": score_skills(profile, requirements, config),
+    }

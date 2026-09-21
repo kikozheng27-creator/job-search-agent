@@ -225,3 +225,7 @@ data/raw/
 # Local job tracker database: personal application history, never commit.
 *.db
 data/tracker.db
+
+# Live evaluation JSON (repeatability, authorization fixtures).
+evaluation/output/*
+!evaluation/output/.gitkeep

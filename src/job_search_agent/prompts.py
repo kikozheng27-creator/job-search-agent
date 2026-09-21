@@ -1,4 +1,5 @@
 from job_search_agent.candidate import CandidateProfile
+from job_search_agent.evidence_units import format_evidence_units
 
 
 EXTRACTION_RULES = """
@@ -10,14 +11,13 @@ Extraction rules (facts only, do not infer beyond the text):
   explicit.
 - minimum_years_experience: the lowest number of years the posting requires.
   For a range such as "3-5 years", use 3. Use null if no number is given.
-- required_skills vs preferred_skills: put a skill in preferred_skills when
-  the posting words it as "preferred", "nice to have", or "a plus".
-- Normalize every skill to a concise skill, tool, or competency name, the way
-  it would appear on a resume: "R", "SAS", "survival analysis", "mixed
-  models", "CDISC ADaM". Do not copy prose fragments from the posting. Strip
-  qualifiers such as "strong", "expert-level", "deep knowledge of",
-  "experience with", "familiarity with", and "preferred". Split a bullet
-  listing several skills into one entry per skill.
+- required_skills vs preferred_skills: leave both lists empty. Python
+  fills them from a dedicated skill-inventory extraction step.
+- skill_unit_decisions: leave empty.
+- skill_claims: leave empty.
+  Do not put education, years of experience, certifications, security
+  clearance, training courses, coding standards, or work authorization
+  into skills.
 - sponsorship: classify work-authorization language into exactly one of:
     * "not_mentioned"  - the posting says nothing about work authorization.
       This is the default and the correct answer when in doubt.
@@ -72,6 +72,7 @@ Also provide:
 Do not compute an overall score.
 Do not make an apply or skip recommendation.
 Both are calculated separately in code.
+Do not enumerate the posting's skill inventory; that is a separate step.
 """
 
 
@@ -88,3 +89,62 @@ Job posting:
 {job_description}
 {EXTRACTION_RULES}
 {SCORING_RULES}"""
+
+
+SKILL_INVENTORY_RULES = """
+You enumerate skills. You do not score or judge the candidate.
+
+For every evidence unit below, return exactly one object with that
+source_unit_id. Do not skip a unit. Do not invent ids.
+
+For each unit, list every explicit technical or domain skill, tool,
+language, library, method, platform, or named capability that the unit
+requires or prefers. Use the exact source span where practical
+("Python", "Jupyter Notebooks", "Machine Learning"). Use a concise skill as
+it would appear on a resume. Strip qualifiers such as "strong",
+"expert-level", "deep knowledge of", "experience with",
+"familiarity with", and "preferred". Do not copy prose fragments from
+the posting. Split a unit listing several skills into one skills item
+per skill.
+
+If the unit names several items, return all of them as atomic resume-style
+names ("Python", "Jupyter Notebooks", "big data", "Machine Learning").
+Do not copy sentence fragments, verb phrases, academic disciplines,
+responsibilities, work-environment descriptions, or incidental tools
+mentioned only as examples. If the unit is not a skill requirement
+(benefits, location, clearance, years of experience, courses,
+certifications), return skills=[].
+Never invent a skill that does not appear in the referenced unit.
+Never invent evidence.
+
+Do not score education, experience, career relevance, or sponsorship.
+Do not recommend apply or skip.
+Do not produce general reasoning about candidate fit.
+"""
+
+
+def build_skill_inventory_prompt(units: list) -> str:
+    unit_block = format_evidence_units(units, candidates_only=False) or (
+        "(no evidence units)"
+    )
+    return f"""Enumerate every explicit candidate skill in these evidence units.
+
+{SKILL_INVENTORY_RULES}
+
+Evidence units (generated in Python; use these IDs only):
+{unit_block}
+"""
+
+
+def build_skill_repair_prompt(units: list) -> str:
+    unit_block = format_evidence_units(units, candidates_only=False) or (
+        "(no evidence units)"
+    )
+    return f"""These evidence units were missing skill names. Enumerate every
+explicit skill, tool, or capability named in each unit. Use exact source
+spans. Return one object per unit id. Do not invent ids. Do not invent
+skills that are not in the unit. Do not score the candidate.
+
+Unresolved evidence units:
+{unit_block}
+"""
