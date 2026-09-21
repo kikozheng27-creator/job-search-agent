@@ -211,6 +211,29 @@ def python_skills_consistent_on_identical_inputs(runs: list[dict]) -> dict:
     }
 
 
+def python_experience_consistent_on_identical_inputs(runs: list[dict]) -> dict:
+    """Same candidate years + same extracted min years must yield the same score."""
+    groups: dict[str, list[int]] = defaultdict(list)
+
+    for row in runs:
+        key = freeze(
+            {
+                "candidate_years": row.get("candidate_years_of_experience"),
+                "minimum_years": row["minimum_years_experience"],
+            }
+        )
+        groups[key].append(row["experience_score"])
+
+    consistent = all(len(set(scores)) == 1 for scores in groups.values())
+    production_range = summarize([row["experience_score"] for row in runs])["range"]
+
+    return {
+        "identical_year_inputs_always_same_score": consistent,
+        "distinct_year_input_pairs": len(groups),
+        "production_experience_range": production_range,
+    }
+
+
 def describe_evidence_units(snapshot: JobEvaluation | None, job_description: str) -> dict:
     """Record which source units the model inspected and which produced skills."""
     units = build_evidence_units(job_description)
@@ -542,18 +565,32 @@ def llm_score_fields_vs_extraction(runs: list[dict]) -> dict:
     """Separate LLM component scores from extracted requirement fields."""
     years = categorical_summary(runs, "minimum_years_experience")
     degrees = categorical_summary(runs, "required_degree")
+    llm_experience = [
+        (row.get("llm_scores") or {}).get("experience")
+        for row in runs
+        if (row.get("llm_scores") or {}).get("experience") is not None
+    ]
+    production_experience = [row["experience_score"] for row in runs]
+    production_summary = summarize(production_experience)
+    years_stable = years["unique_count"] == 1
 
     return {
         "experience": {
             "extraction_unique_years": years["unique_count"],
             "extraction_values": years["frequencies"],
-            "llm_score_summary": summarize(
-                [row["experience_score"] for row in runs]
-            ),
+            "llm_score_summary": summarize(llm_experience),
+            "production_score_summary": production_summary,
+            "python_overwrote_llm_experience_score": [
+                row["run"]
+                for row in runs
+                if row.get("python_overwrote_llm_experience_score")
+            ],
             "score_varies_with_stable_years": (
-                years["unique_count"] == 1
-                and summarize([row["experience_score"] for row in runs])["range"]
-                not in (0, 0.0)
+                years_stable
+                and production_summary["range"] not in (0, 0.0, None)
+            ),
+            "production_range_zero_when_years_stable": (
+                years_stable and production_summary["range"] in (0, 0.0)
             ),
         },
         "education": {
@@ -647,10 +684,27 @@ def root_cause_notes(runs: list[dict]) -> list[str]:
         )
 
     experience = llm_vs_extract["experience"]
-    if experience["score_varies_with_stable_years"]:
+    experience_consistency = python_experience_consistent_on_identical_inputs(runs)
+    if experience_consistency["identical_year_inputs_always_same_score"]:
+        notes.append(
+            "Deterministic Python experience scoring is consistent: identical "
+            "candidate years and minimum_years_experience always produced "
+            "the same experience_score."
+        )
+    else:
+        notes.append(
+            "WARNING: identical candidate years and minimum_years_experience "
+            "produced different experience_score values."
+        )
+    if experience.get("production_range_zero_when_years_stable"):
+        notes.append(
+            "Production experience score range is 0 while "
+            "minimum_years_experience is stable."
+        )
+    elif experience["score_varies_with_stable_years"]:
         notes.append(
             "Experience score varies while minimum_years_experience is "
-            "stable, so that variance comes from the LLM experience score, "
+            "stable, so that variance comes from the experience scorer, "
             "not from the extracted years field."
         )
     elif experience["extraction_unique_years"] > 1:
@@ -772,6 +826,12 @@ def record_run(
             if snapshot
             else None
         ),
+        "python_overwrote_llm_experience_score": (
+            snapshot.scores.experience != analysis.scores.experience
+            if snapshot
+            else None
+        ),
+        "candidate_years_of_experience": profile.years_of_experience,
         "skills_score": analysis.scores.skills,
         "education_score": analysis.scores.education,
         "experience_score": analysis.scores.experience,
@@ -821,6 +881,29 @@ def print_summary(report: dict) -> None:
             f"min={stats['minimum']} max={stats['maximum']}  "
             f"mean={stats['mean']} sd={stats['std_dev']}"
         )
+
+    print()
+    print("Experience scoring")
+    experience = (report.get("llm_scores_versus_extraction") or {}).get(
+        "experience"
+    ) or {}
+    llm_stats = experience.get("llm_score_summary") or {}
+    prod_stats = experience.get("production_score_summary") or {}
+    print(
+        f"  LLM experience           values={llm_stats.get('values')}  "
+        f"min={llm_stats.get('minimum')} max={llm_stats.get('maximum')}  "
+        f"range={llm_stats.get('range')}"
+    )
+    print(
+        f"  production experience    values={prod_stats.get('values')}  "
+        f"min={prod_stats.get('minimum')} max={prod_stats.get('maximum')}  "
+        f"range={prod_stats.get('range')}"
+    )
+    print(
+        "  production_range_zero_when_years_stable="
+        f"{experience.get('production_range_zero_when_years_stable')}  "
+        f"python_overwrote_runs={experience.get('python_overwrote_llm_experience_score')}"
+    )
 
     print()
     print("Categorical / extracted fields")
@@ -982,6 +1065,9 @@ def build_report(
         "dedicated_skill_stability": dedicated_skill_stability(runs),
         "largest_skills_swing": largest_skills_swing(runs),
         "python_skill_scorer": python_skills_consistent_on_identical_inputs(
+            runs
+        ),
+        "python_experience_scorer": python_experience_consistent_on_identical_inputs(
             runs
         ),
         "llm_scores_versus_extraction": llm_score_fields_vs_extraction(runs),

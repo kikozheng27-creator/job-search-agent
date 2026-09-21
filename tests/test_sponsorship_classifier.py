@@ -270,7 +270,7 @@ def test_classifier_does_not_change_component_scores_in_the_matcher():
         job_description=read_fixture("01_no_f1.txt"),
     )
 
-    assert result.overall_score == 84.5
+    assert result.overall_score == 67.0
     assert result.scores.skills == 80
     assert result.recommendation == Recommendation.SKIP
     assert result.passes_hard_filters is False

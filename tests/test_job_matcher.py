@@ -34,11 +34,11 @@ def test_job_matcher_calculates_correct_score():
         job_description="Example job description",
     )
 
-    assert result.overall_score == 84.5
-    assert result.recommendation == Recommendation.APPLY
+    assert result.overall_score == 67.0
+    assert result.recommendation == Recommendation.MAYBE
     assert result.scores.skills == 80
     assert result.scores.education == 100
-    assert result.scores.experience == 70
+    assert result.scores.experience == 0
     assert result.scores.career_relevance == 95
 
 
@@ -130,8 +130,8 @@ def test_concerns_are_reported_without_changing_the_verdict():
     )
 
     assert result.passes_hard_filters is True
-    assert result.recommendation == Recommendation.APPLY
-    assert result.overall_score == 84.5
+    assert result.recommendation == Recommendation.MAYBE
+    assert result.overall_score == 67.0
     assert len(result.concerns) == 1
     assert "does not offer visa sponsorship" in result.concerns[0]
 
@@ -204,7 +204,7 @@ def test_python_overrides_a_wrong_llm_sponsorship_stance():
     )
     assert result.passes_hard_filters is False
     assert result.recommendation == Recommendation.SKIP
-    assert result.overall_score == 84.5
+    assert result.overall_score == 67.0
     assert result.scores.skills == 80
     assert result.concerns == []
 
@@ -219,8 +219,53 @@ def test_job_matcher_ignores_the_llm_skills_score():
 
     assert result.scores.skills == 80
     assert result.scores.education == 100
-    assert result.scores.experience == 70
+    assert result.scores.experience == 0
     assert result.scores.career_relevance == 95
+
+
+def test_job_matcher_ignores_the_llm_experience_score():
+    profile = make_profile(years_of_experience=0.5)
+    requirements = make_requirements(minimum_years_experience=7)
+    scores = []
+
+    for llm_experience in (0, 25, 40, 90):
+        result = build_matcher(
+            evaluation=make_evaluation(
+                requirements=requirements,
+                scores=make_scores(experience=llm_experience),
+            )
+        ).match(profile=profile, job_description="Example")
+        scores.append(result.scores.experience)
+
+    assert scores == [6, 6, 6, 6]
+    assert scores[0] != 90
+
+
+def test_hard_filter_skip_is_independent_of_experience_score():
+    result = JobMatcher(
+        ai_client=FakeAIClient(
+            make_evaluation(
+                requirements=make_requirements(minimum_years_experience=7),
+                scores=make_scores(experience=90),
+            )
+        ),
+        scoring_config=DEFAULT_SCORING,
+        filter_config=FilterConfig(
+            experience=ExperienceFilterConfig(
+                enabled=True,
+                max_required_years=2,
+                tolerance_years=2,
+            ),
+        ),
+    ).match(
+        profile=make_profile(years_of_experience=0.5),
+        job_description="7 years of relevant experience.",
+    )
+
+    assert result.scores.experience == 6
+    assert result.passes_hard_filters is False
+    assert result.recommendation == Recommendation.SKIP
+    assert "years of experience" in result.hard_filter_reasons[0]
 
 
 def test_job_matcher_keeps_extracted_requirements():

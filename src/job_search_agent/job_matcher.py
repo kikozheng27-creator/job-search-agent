@@ -3,6 +3,7 @@ from job_search_agent.candidate import CandidateProfile
 from job_search_agent.concerns import collect_concerns
 from job_search_agent.config_models import FilterConfig, ScoringConfig
 from job_search_agent.evidence_units import build_evidence_units
+from job_search_agent.experience_scorer import score_experience
 from job_search_agent.filters import check_hard_filters
 from job_search_agent.models import (
     JobAnalysis,
@@ -85,6 +86,11 @@ class JobMatcher:
                 evaluation.requirements,
                 self.scoring_config.skills,
             )
+
+        evaluation.scores.experience = score_experience(
+            profile,
+            evaluation.requirements,
+        )
 
         extraction_report.skills_scored_from_inventory = (
             score_from_inventory

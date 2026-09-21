@@ -169,7 +169,7 @@ def test_no_h1b_keeps_generic_concern_but_not_f1_prohibition():
 
     assert result.requirements.sponsorship is SponsorshipStance.NOT_OFFERED
     assert result.passes_hard_filters is True
-    assert result.recommendation == Recommendation.APPLY
+    assert result.recommendation == Recommendation.MAYBE
     assert len(result.concerns) == 1
     assert "does not offer visa sponsorship" in result.concerns[0]
     assert INVENTED_F1 not in result.missing_requirements
@@ -267,8 +267,8 @@ def test_overall_score_and_recommendation_stay_deterministic():
         silent_jd,
     )
 
-    assert invented.overall_score == clean.overall_score == 84.5
-    assert invented.recommendation == clean.recommendation == Recommendation.APPLY
+    assert invented.overall_score == clean.overall_score == 67.0
+    assert invented.recommendation == clean.recommendation == Recommendation.MAYBE
     assert invented.scores.skills == clean.scores.skills == 80
 
 
@@ -437,8 +437,8 @@ def test_empty_sanitized_reasoning_gets_deterministic_fallback():
     assert "F-1" not in result.reasoning
     assert "authorization" not in result.reasoning.lower()
     assert "sponsorship" not in result.reasoning.lower()
-    assert result.overall_score == 84.5
-    assert result.recommendation == Recommendation.APPLY
+    assert result.overall_score == 67.0
+    assert result.recommendation == Recommendation.MAYBE
 
 
 def test_mixed_authorization_reasoning_fallback_uses_experience_hard_filter():
@@ -476,7 +476,7 @@ def test_mixed_authorization_reasoning_fallback_uses_experience_hard_filter():
     assert "sponsorship" not in result.reasoning.lower()
     assert "F-1" not in result.reasoning
     assert len(result.hard_filter_reasons) == 1
-    assert result.overall_score == 84.5
+    assert result.overall_score == 67.0
 
 
 def test_valid_llm_reasoning_is_not_replaced_by_fallback():
@@ -491,6 +491,6 @@ def test_valid_llm_reasoning_is_not_replaced_by_fallback():
 
     assert result.reasoning == original
     assert "hard-filter" not in result.reasoning
-    assert result.recommendation == Recommendation.APPLY
-    assert result.overall_score == 84.5
+    assert result.recommendation == Recommendation.MAYBE
+    assert result.overall_score == 67.0
 
