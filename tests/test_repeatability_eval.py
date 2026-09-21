@@ -18,6 +18,7 @@ from evaluation.repeatability import (
     categorical_summary,
     largest_skills_swing,
     pairwise_jaccard,
+    python_experience_consistent_on_identical_inputs,
     python_skills_consistent_on_identical_inputs,
     record_run,
     summarize,
@@ -185,8 +186,40 @@ def test_record_run_does_not_call_openai_or_the_network():
     assert row["recomputed_skills_score_matches"] is True
     assert row["final_recommendation"] in {item.value for item in Recommendation}
     assert row["python_overwrote_llm_skills_score"] is True
+    assert row["python_overwrote_llm_experience_score"] is True
+    assert row["candidate_years_of_experience"] == 0
+    assert row["experience_score"] == 0
+    assert row["llm_scores"]["experience"] == 70
     assert row["evidence_units"]["unit_count"] >= 1
     assert "omitted_unit_ids" in row["evidence_units"]
+
+
+def test_identical_year_inputs_are_treated_as_deterministic():
+    runs = [
+        {
+            "run": 1,
+            "candidate_years_of_experience": 0.5,
+            "minimum_years_experience": 7,
+            "experience_score": 6,
+        },
+        {
+            "run": 2,
+            "candidate_years_of_experience": 0.5,
+            "minimum_years_experience": 7,
+            "experience_score": 6,
+        },
+        {
+            "run": 3,
+            "candidate_years_of_experience": 0.5,
+            "minimum_years_experience": 2,
+            "experience_score": 21,
+        },
+    ]
+
+    result = python_experience_consistent_on_identical_inputs(runs)
+
+    assert result["identical_year_inputs_always_same_score"] is True
+    assert result["distinct_year_input_pairs"] == 2
 
 
 def test_pairwise_jaccard_on_normalized_skill_sets():
