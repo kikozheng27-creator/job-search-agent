@@ -19,6 +19,7 @@ from job_search_agent.models import (
     JobEvaluation,
     JobRequirements,
     Recommendation,
+    SkillInventory,
     SponsorshipStance,
 )
 
@@ -53,13 +54,42 @@ PERMISSIVE_FILTERS = FilterConfig(
 class FakeAIClient:
     """Stand-in for AIClient so unit tests never reach the OpenAI API."""
 
-    def __init__(self, evaluation: JobEvaluation) -> None:
+    supports_dedicated_skill_extraction = False
+
+    def __init__(
+        self,
+        evaluation: JobEvaluation,
+        skill_inventory: SkillInventory | None = None,
+        repair_inventory: SkillInventory | None = None,
+        skill_inventories: list[SkillInventory] | None = None,
+    ):
         self.evaluation = evaluation
         self.prompts: list[str] = []
+        self.skill_prompts: list[str] = []
+        responses: list[SkillInventory] = []
+        if skill_inventories is not None:
+            responses = list(skill_inventories)
+        else:
+            if skill_inventory is not None:
+                responses.append(skill_inventory)
+            if repair_inventory is not None:
+                responses.append(repair_inventory)
+        self._skill_responses = responses
+        self._skill_index = 0
+        if responses:
+            self.supports_dedicated_skill_extraction = True
 
     def evaluate_job(self, prompt: str) -> JobEvaluation:
         self.prompts.append(prompt)
         return self.evaluation
+
+    def extract_skill_inventory(self, prompt: str) -> SkillInventory:
+        self.skill_prompts.append(prompt)
+        if self._skill_index >= len(self._skill_responses):
+            return SkillInventory(units=[])
+        inventory = self._skill_responses[self._skill_index]
+        self._skill_index += 1
+        return inventory
 
 
 def make_requirements(**overrides) -> JobRequirements:
@@ -104,6 +134,8 @@ def make_scores(**overrides) -> ComponentScores:
 def make_evaluation(
     requirements: JobRequirements | None = None,
     scores: ComponentScores | None = None,
+    skill_claims: list | None = None,
+    skill_unit_decisions: list | None = None,
 ) -> JobEvaluation:
     return JobEvaluation(
         requirements=requirements or make_requirements(),
@@ -114,6 +146,8 @@ def make_evaluation(
         ],
         missing_requirements=["SAS"],
         reasoning="The candidate matches most core requirements.",
+        skill_claims=skill_claims or [],
+        skill_unit_decisions=skill_unit_decisions or [],
     )
 
 

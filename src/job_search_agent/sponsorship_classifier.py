@@ -14,6 +14,8 @@ from job_search_agent.models import JobRequirements, SponsorshipStance
 
 _WHITESPACE = re.compile(r"\s+")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+# "U.S. citizenship required" must not split after "U.S."
+_ABBREVIATION = re.compile(r"\b(u\.s\.a\.|u\.s\.)", re.IGNORECASE)
 
 # Strongest match wins when a posting contains more than one authorization
 # sentence, so citizen/PR-only is never overridden by generic no-sponsorship.
@@ -35,6 +37,10 @@ def _normalize(text: str) -> str:
     return _WHITESPACE.sub(" ", text).strip().casefold()
 
 
+def _mask_abbreviations(text: str) -> str:
+    return _ABBREVIATION.sub(lambda match: match.group(0).replace(".", ""), text)
+
+
 def split_sentences(text: str) -> list[str]:
     sentences: list[str] = []
 
@@ -43,7 +49,7 @@ def split_sentences(text: str) -> list[str]:
         if not stripped:
             continue
 
-        for part in _SENTENCE_SPLIT.split(stripped):
+        for part in _SENTENCE_SPLIT.split(_mask_abbreviations(stripped)):
             normalized = _normalize(part)
             if normalized:
                 sentences.append(normalized)
@@ -81,6 +87,17 @@ _CITIZENSHIP = [
         \b(?:u\.?\s*s\.?\s+)?citizenship
         \s+or\s+permanent\s+residency
         \s+(?:is\s+)?required\b
+        """
+    ),
+    _compile(
+        r"""
+        \b(?:u\.?\s*s\.?|united\s+states)\s+citizenship
+        \s+(?:is\s+)?required\b
+        """
+    ),
+    _compile(
+        r"""
+        \bonly\s+to\s+(?:u\.?\s*s\.?|united\s+states)\s+citizens?\b
         """
     ),
 ]
@@ -201,6 +218,20 @@ def classify_sentence(sentence: str) -> SponsorshipStance | None:
     return None
 
 
+def _quote_in_source(job_description: str, quote: str | None) -> bool:
+    """True only when the quote is a contiguous substring of the posting."""
+    if not quote or not quote.strip():
+        return False
+
+    quoted = _normalize(quote)
+    return bool(quoted) and quoted in _normalize(job_description)
+
+
+def quote_in_source(job_description: str, quote: str | None) -> bool:
+    """Public name for evaluation diagnostics. Same rule as classification."""
+    return _quote_in_source(job_description, quote)
+
+
 def classify_sponsorship(
     job_description: str,
     sponsorship_language: str | None = None,
@@ -208,9 +239,11 @@ def classify_sponsorship(
     """Classify a posting from its sentences. Silence is not_mentioned."""
     sentences = split_sentences(job_description)
 
-    if sponsorship_language and sponsorship_language.strip():
+    # An LLM quote is evidence only when it actually appears in the posting.
+    # Invented phrases — including prompt examples — must not classify.
+    if _quote_in_source(job_description, sponsorship_language):
         quoted = _normalize(sponsorship_language)
-        if quoted and quoted not in sentences:
+        if quoted not in sentences:
             sentences.append(quoted)
 
     strongest = SponsorshipStance.NOT_MENTIONED
@@ -227,14 +260,53 @@ def classify_sponsorship(
     return strongest
 
 
+def _supporting_sentence(
+    job_description: str,
+    stance: SponsorshipStance,
+) -> str | None:
+    """Return a source sentence that justifies a non-silent stance."""
+    for line in job_description.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        if classify_sentence(stripped) is stance:
+            return stripped
+
+        for part in _SENTENCE_SPLIT.split(_mask_abbreviations(stripped)):
+            sentence = part.strip()
+            if sentence and classify_sentence(sentence) is stance:
+                return sentence
+
+    return None
+
+
 def apply_sponsorship_classification(
     requirements: JobRequirements,
     job_description: str,
 ) -> JobRequirements:
     """Overwrite LLM stance. Does not change scores or other extracted fields."""
-    requirements.sponsorship = classify_sponsorship(
+    if not _quote_in_source(job_description, requirements.sponsorship_language):
+        requirements.sponsorship_language = None
+
+    stance = classify_sponsorship(
         job_description,
         requirements.sponsorship_language,
     )
+    requirements.sponsorship = stance
+
+    # JobAnalysis revalidates nested requirements. The unquoted-stance guard
+    # would otherwise treat a Python-backed stance with no LLM quote as
+    # invented and reset it to not_mentioned.
+    if (
+        stance is not SponsorshipStance.NOT_MENTIONED
+        and not (
+            requirements.sponsorship_language
+            and requirements.sponsorship_language.strip()
+        )
+    ):
+        evidence = _supporting_sentence(job_description, stance)
+        if evidence:
+            requirements.sponsorship_language = evidence
 
     return requirements

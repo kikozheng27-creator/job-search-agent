@@ -2,6 +2,7 @@ from conftest import make_profile, make_requirements
 
 from job_search_agent.config_models import SkillsScoringConfig
 from job_search_agent.skill_scorer import (
+    diagnose_skills,
     is_degree_requirement,
     score_skills,
 )
@@ -126,6 +127,52 @@ def test_identical_inputs_are_repeatable():
     second = score()
 
     assert first == second == 80
+
+
+def test_diagnose_skills_matches_score_and_lists_matches():
+    requirements = make_requirements(
+        required_skills=["R", "Python", "SAS"],
+        preferred_skills=["CDISC"],
+    )
+    profile = make_profile()
+    diagnostic = diagnose_skills(profile, requirements, DEFAULT_SKILLS)
+
+    assert diagnostic["skills_score"] == score(
+        profile=profile,
+        requirements=requirements,
+    )
+    assert diagnostic["required"]["raw"] == ["R", "Python", "SAS"]
+    assert diagnostic["required"]["matched"] == ["R", "Python"]
+    assert diagnostic["required"]["missing"] == ["SAS"]
+    assert diagnostic["required"]["match_rate"] == round(2 / 3, 4)
+    assert diagnostic["preferred"]["missing"] == ["CDISC"]
+    assert diagnostic["preferred"]["matched"] == []
+    assert diagnostic["preferred"]["match_rate"] == 0.0
+
+
+def test_diagnose_skills_is_repeatable_for_identical_inputs():
+    requirements = make_requirements(
+        required_skills=["R programming", "Python"],
+        preferred_skills=[],
+    )
+    first = diagnose_skills(make_profile(), requirements, DEFAULT_SKILLS)
+    second = diagnose_skills(make_profile(), requirements, DEFAULT_SKILLS)
+
+    assert first == second
+    assert first["skills_score"] == 100
+    assert first["required"]["normalized"] == ["r", "python"]
+
+
+def test_diagnose_skills_empty_lists_match_rate_is_one():
+    requirements = make_requirements(
+        required_skills=[],
+        preferred_skills=[],
+    )
+    diagnostic = diagnose_skills(make_profile(), requirements, DEFAULT_SKILLS)
+
+    assert diagnostic["required"]["match_rate"] == 1.0
+    assert diagnostic["preferred"]["match_rate"] == 1.0
+    assert diagnostic["skills_score"] == 100
 
 
 def test_score_stays_within_0_and_100():
