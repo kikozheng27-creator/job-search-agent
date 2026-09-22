@@ -8,7 +8,7 @@ from conftest import (
     make_scores,
 )
 
-from job_search_agent.candidate import WorkAuthorization
+from job_search_agent.candidate import Degree, WorkAuthorization
 from job_search_agent.config_models import (
     ExperienceFilterConfig,
     FilterConfig,
@@ -239,6 +239,44 @@ def test_job_matcher_ignores_the_llm_experience_score():
 
     assert scores == [6, 6, 6, 6]
     assert scores[0] != 90
+
+
+def test_job_matcher_ignores_the_llm_education_score():
+    profile = make_profile()
+    requirements = make_requirements(required_degree="Master's")
+    scores = []
+
+    for llm_education in (0, 50, 70, 100):
+        result = build_matcher(
+            evaluation=make_evaluation(
+                requirements=requirements,
+                scores=make_scores(education=llm_education),
+            )
+        ).match(profile=profile, job_description="Example")
+        scores.append(result.scores.education)
+
+    assert scores == [100, 100, 100, 100]
+
+
+def test_education_score_does_not_add_a_hard_filter():
+    result = build_matcher(
+        evaluation=make_evaluation(
+            requirements=make_requirements(
+                minimum_years_experience=1,
+                required_degree="Doctorate",
+            ),
+            scores=make_scores(education=100),
+        )
+    ).match(
+        profile=make_profile(
+            education=[Degree(degree="Bachelor's", field="Biostatistics")]
+        ),
+        job_description="A doctorate is required.",
+    )
+
+    assert result.scores.education == 40
+    assert result.passes_hard_filters is True
+    assert result.hard_filter_reasons == []
 
 
 def test_hard_filter_skip_is_independent_of_experience_score():
