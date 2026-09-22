@@ -22,7 +22,23 @@ from job_search_agent.tracker import ApplicationStatus, JobTracker
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SHIPPED_CONFIG_DIR = REPO_ROOT / "config"
+PUBLIC_CONFIG_DIR = REPO_ROOT / "config"
+
+
+def copy_public_config(destination: Path) -> Path:
+    destination.mkdir()
+    for name in ("filters.yaml", "scoring.yaml"):
+        shutil.copy2(PUBLIC_CONFIG_DIR / name, destination / name)
+    shutil.copy2(
+        PUBLIC_CONFIG_DIR / "candidate_profile.example.yaml",
+        destination / "candidate_profile.yaml",
+    )
+    return destination
+
+
+@pytest.fixture
+def public_config_dir(tmp_path):
+    return copy_public_config(tmp_path / "config")
 
 
 def entry_level_evaluation():
@@ -35,26 +51,26 @@ def entry_level_evaluation():
 # --- integration boundary: shipped config + extracted requirements ----------
 
 
-def test_analysis_runs_against_the_shipped_configuration():
-    """Exercises the real config files with a fake AI client."""
+def test_analysis_runs_against_the_public_configuration(public_config_dir):
+    """Exercises the public config files with a fake AI client."""
     ai_client = FakeAIClient(entry_level_evaluation())
 
     result = analyze_job_description(
         job_description="Example Pharma is hiring a Biostatistician.",
         ai_client=ai_client,
         source_url="https://example.com/jobs/1",
-        config_dir=SHIPPED_CONFIG_DIR,
+        config_dir=public_config_dir,
     )
 
     assert result.company == "Example Pharma"
     assert result.job_title == "Biostatistician"
-    assert result.overall_score == 77.5
+    assert result.overall_score == 86.0
     assert result.source_url == "https://example.com/jobs/1"
     assert result.passes_hard_filters is True
-    assert result.recommendation == Recommendation.APPLY
+    assert result.recommendation == Recommendation.STRONGLY_APPLY
 
 
-def test_shipped_configuration_filters_a_senior_posting():
+def test_public_configuration_filters_a_senior_posting(public_config_dir):
     """A high-scoring posting is still skipped when a hard filter fails.
 
     The shipped filters allow up to 2 years plus 2 years of tolerance, so a
@@ -67,16 +83,18 @@ def test_shipped_configuration_filters_a_senior_posting():
     result = analyze_job_description(
         job_description="Example",
         ai_client=FakeAIClient(evaluation),
-        config_dir=SHIPPED_CONFIG_DIR,
+        config_dir=public_config_dir,
     )
 
-    assert result.overall_score == 69.0
+    assert result.overall_score == 65.2
     assert result.passes_hard_filters is False
     assert result.recommendation == Recommendation.SKIP
     assert len(result.hard_filter_reasons) == 1
 
 
-def test_shipped_configuration_allows_a_posting_inside_the_tolerance():
+def test_public_configuration_allows_a_posting_inside_the_tolerance(
+    public_config_dir,
+):
     """3 and 4 years must reach weighted scoring rather than being filtered."""
     for required_years in (3, 4):
         evaluation = make_evaluation(
@@ -88,14 +106,14 @@ def test_shipped_configuration_allows_a_posting_inside_the_tolerance():
         result = analyze_job_description(
             job_description="Example",
             ai_client=FakeAIClient(evaluation),
-            config_dir=SHIPPED_CONFIG_DIR,
+            config_dir=public_config_dir,
         )
 
         assert result.passes_hard_filters is True
         assert result.recommendation != Recommendation.SKIP
 
 
-def test_extracted_requirements_survive_to_the_final_analysis():
+def test_extracted_requirements_survive_to_the_final_analysis(public_config_dir):
     evaluation = make_evaluation(
         requirements=make_requirements(
             minimum_years_experience=1,
@@ -118,7 +136,7 @@ def test_extracted_requirements_survive_to_the_final_analysis():
             "We do not provide visa sponsorship."
         ),
         ai_client=FakeAIClient(evaluation),
-        config_dir=SHIPPED_CONFIG_DIR,
+        config_dir=public_config_dir,
     )
 
     requirements = result.requirements
@@ -130,16 +148,16 @@ def test_extracted_requirements_survive_to_the_final_analysis():
     assert requirements.sponsorship is SponsorshipStance.NOT_OFFERED
 
 
-def test_the_real_profile_is_sent_to_the_model():
+def test_the_public_example_profile_is_sent_to_the_model(public_config_dir):
     ai_client = FakeAIClient(make_evaluation())
 
     analyze_job_description(
         job_description="Example",
         ai_client=ai_client,
-        config_dir=SHIPPED_CONFIG_DIR,
+        config_dir=public_config_dir,
     )
 
-    assert "Biostatistics" in ai_client.prompts[0]
+    assert "Example University" in ai_client.prompts[0]
 
 
 def test_incomplete_profile_configuration_is_rejected(tmp_path):
@@ -289,7 +307,7 @@ def test_empty_job_description_file_exits_1(tmp_path):
 def test_analyze_and_save_writes_to_the_tracker(tmp_path, monkeypatch, capsys):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    shutil.copytree(SHIPPED_CONFIG_DIR, workspace / "config")
+    copy_public_config(workspace / "config")
 
     posting = workspace / "posting.txt"
     posting.write_text("Example Pharma is hiring.", encoding="utf-8")
@@ -322,8 +340,8 @@ def test_analyze_and_save_writes_to_the_tracker(tmp_path, monkeypatch, capsys):
     output = capsys.readouterr().out
 
     assert exit_code == 0
-    assert "Overall Match: 77.5 / 100" in output
-    assert "Recommendation: APPLY" in output
+    assert "Overall Match: 86.0 / 100" in output
+    assert "Recommendation: STRONGLY_APPLY" in output
 
     with JobTracker(database) as tracker:
         jobs = tracker.list_jobs()
@@ -332,7 +350,7 @@ def test_analyze_and_save_writes_to_the_tracker(tmp_path, monkeypatch, capsys):
     assert jobs[0].status == ApplicationStatus.APPLIED
     assert jobs[0].notes == "Applied via referral"
     assert jobs[0].source_url == "https://example.com/jobs/7"
-    assert jobs[0].match_score == 77.5
+    assert jobs[0].match_score == 86.0
 
 
 def test_analyze_without_save_leaves_the_tracker_empty(
@@ -340,7 +358,7 @@ def test_analyze_without_save_leaves_the_tracker_empty(
 ):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    shutil.copytree(SHIPPED_CONFIG_DIR, workspace / "config")
+    copy_public_config(workspace / "config")
 
     posting = workspace / "posting.txt"
     posting.write_text("Example Pharma is hiring.", encoding="utf-8")
@@ -369,7 +387,7 @@ def test_analyze_url_feeds_extracted_text_into_the_matcher(
 ):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    shutil.copytree(SHIPPED_CONFIG_DIR, workspace / "config")
+    copy_public_config(workspace / "config")
 
     html = (
         Path(__file__).resolve().parent / "fixtures" / "sample_job_page.html"

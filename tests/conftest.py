@@ -169,8 +169,8 @@ def make_analysis(**overrides) -> JobAnalysis:
 
 def make_profile(**overrides) -> CandidateProfile:
     defaults = {
-        "target_job_families": ["Biostatistician", "Data Analyst"],
-        "education": [Degree(degree="Master's", field="Biostatistics")],
+        "target_job_families": ["Example Analyst", "Data Analyst"],
+        "education": [Degree(degree="Master's", field="Example Field")],
         "skills": Skills(
             programming=["Python", "R", "SQL"],
             statistics=["Regression", "Survival Analysis", "GLM"],
@@ -178,7 +178,7 @@ def make_profile(**overrides) -> CandidateProfile:
         "experience_level": "entry_level",
         "years_of_experience": 0,
         "work_authorization": WorkAuthorization(
-            status="US Citizen",
+            status="Synthetic permanent authorization",
             requires_sponsorship=False,
             is_citizen_or_permanent_resident=True,
         ),

@@ -100,7 +100,7 @@ def test_job_matcher_sends_profile_and_posting_to_the_model():
     prompt = ai_client.prompts[0]
 
     assert "Unique posting text" in prompt
-    assert "Biostatistics" in prompt
+    assert "Example Field" in prompt
     assert "Do not compute an overall score." in prompt
 
 

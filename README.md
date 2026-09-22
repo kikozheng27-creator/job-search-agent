@@ -1,155 +1,160 @@
-# job-search-agent
+# Job Search Agent
 
-A personal job-search assistant. It reads a job posting, extracts the
-requirements with an LLM, scores the match **deterministically in Python**,
-and tracks what you have applied to in a local SQLite database.
+A local Python CLI that ingests job descriptions, extracts structured
+requirements with an LLM, grounds important claims in the posting, and
+produces an explainable match score and recommendation. It can also write JSON
+reports and track selected jobs in a local SQLite database.
 
-## Design principle
+## Architecture
 
-The LLM extracts facts and rates four components. It never decides the
-outcome.
+1. **Job-description ingestion** — `analyze` accepts a local text file, stdin,
+   or a public HTTP(S) job URL. URL ingestion uses `requests` and
+   `BeautifulSoup` to remove page chrome and application forms. Pages that are
+   empty, not HTML, or require client-side JavaScript are rejected.
+2. **Evidence units** — Python splits the cleaned posting into stable,
+   numbered source units. These units are the boundary for skill extraction
+   and grounding.
+3. **Structured LLM extraction** — the OpenAI client requests Pydantic-backed
+   structured outputs for job requirements and a dedicated per-unit skill
+   inventory. The model also supplies career-relevance scoring and explanatory
+   prose.
+4. **Grounding and safeguards** — Python rejects unknown evidence-unit IDs,
+   skills not present in their cited unit, non-skill categories, and
+   contextual tool mentions that are not candidate requirements. Missing
+   skill-unit coverage gets one repair pass and remains visible as an
+   unresolved concern if repair fails.
+5. **Deterministic component scoring** — Python computes skill overlap from
+   the grounded inventory, experience from candidate years versus the stated
+   minimum, and education from degree-level requirements. Education affects
+   the weighted score but is not a hard filter.
+6. **Sponsorship classification and hard filters** — Python classifies
+   sponsorship/work-authorization language from source sentences and
+   overwrites unsupported model classifications. Configurable experience,
+   current-work-authorization, and location gates run independently of the
+   weighted score and abstain when the posting is ambiguous.
+7. **Deterministic decision** — Python calculates the weighted overall score
+   from `config/scoring.yaml`. It then applies hard-filter results and score
+   thresholds to choose `STRONGLY_APPLY`, `APPLY`, `MAYBE`, or `SKIP`. The LLM
+   output schema has no overall-score or recommendation field.
+8. **Outputs** — every analysis writes a JSON report under `data/processed/`.
+   With `--save`, the CLI also stores summary data and application status in
+   SQLite at `data/tracker.db` by default.
 
-| Decision | Made by |
-|---|---|
-| Extracting requirements from the posting | LLM (structured output) |
-| Component scores (skills, education, experience, career relevance) | LLM |
-| Overall score | Python, from `config/scoring.yaml` weights |
-| Hard filters (pass/fail gates) | Python, from `config/filters.yaml` |
-| Recommendation | Python, from hard filters + score thresholds |
+Additional hallucination safeguards verify sponsorship quotes against the
+source posting and remove unsupported authorization claims from model-written
+strengths, missing requirements, and reasoning. If model reasoning is removed,
+Python creates fallback reasoning from the deterministic result.
 
-`JobEvaluation` — the LLM's structured output type — deliberately has no
-`overall_score` and no `recommendation` field, so the model cannot supply
-them. A test asserts this.
+## Requirements
+
+- Python 3.11 or newer
+- An OpenAI API key and model name for `analyze`
+- No API key for the test suite or the `list` command
 
 ## Setup
+
+Create a virtual environment and install the project with development
+dependencies:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
-Copy `.env.example` to `.env` and fill in `OPENAI_API_KEY` and
-`OPENAI_MODEL`. `.env` is gitignored and must never be committed.
+Create your private candidate profile from the fictional example:
 
-## Configure your profile
+```powershell
+Copy-Item config\candidate_profile.example.yaml config\candidate_profile.yaml
+```
 
-All personal data lives in YAML, never in Python.
+Edit every profile value, especially the work-authorization fields, before
+using the hard filters. `config/candidate_profile.yaml` is intentionally
+gitignored and must stay local.
 
-- `config/candidate_profile.yaml` — your degrees, skills, projects,
-  experience, locations, work authorization, and target job families.
-  **Sections marked `REVIEW` must be filled in before the hard filters can be
-  trusted**, especially `work_authorization`.
-- `config/scoring.yaml` — component weights (must sum to 1.0) and the score
-  thresholds for each recommendation.
-- `config/filters.yaml` — which hard filters are enabled and how strict they
-  are.
+Create the local environment file:
 
-Invalid configuration fails at startup with a specific message rather than
-part-way through an analysis.
+```powershell
+Copy-Item .env.example .env
+```
 
-## Usage
+Set `OPENAI_API_KEY` and `OPENAI_MODEL` in `.env`. Environment files are
+gitignored; `.env.example` contains variable names only.
 
-Analyze a posting from a file:
+Optional configuration:
+
+- `config/scoring.yaml` controls component weights, skill aliases, and
+  recommendation thresholds.
+- `config/filters.yaml` controls the deterministic hard filters.
+
+Configuration is validated at startup, including unknown keys and invalid
+weights.
+
+## CLI usage
+
+Analyze a local job description:
 
 ```powershell
 .\.venv\Scripts\python.exe -m job_search_agent.main analyze --jd jobs/example.txt
 ```
 
-Analyze from a public job URL:
+Fetch and analyze a public job page:
 
 ```powershell
 .\.venv\Scripts\python.exe -m job_search_agent.main analyze --url "https://example.com/jobs/123"
 ```
 
-Analyze from stdin:
+Analyze stdin:
 
 ```powershell
 Get-Content jobs/example.txt | .\.venv\Scripts\python.exe -m job_search_agent.main analyze --stdin
 ```
 
-Analyze a local file and record a source URL with the tracker:
+Analyze a file, retain its source URL, and save it to the tracker:
 
 ```powershell
 .\.venv\Scripts\python.exe -m job_search_agent.main analyze `
     --jd jobs/example.txt `
     --url "https://example.com/jobs/123" `
-    --save --status APPLIED --notes "Referral from a classmate"
+    --save `
+    --status APPLIED `
+    --notes "Follow up next week"
 ```
 
-List what you have tracked:
+List tracked jobs:
 
 ```powershell
 .\.venv\Scripts\python.exe -m job_search_agent.main list
 .\.venv\Scripts\python.exe -m job_search_agent.main list --status APPLIED --limit 20
 ```
 
-Every analysis also writes a full JSON report to `data/processed/`.
+Supported statuses are `SAVED`, `APPLIED`, `INTERVIEW`, `REJECTED`, `OFFER`,
+and `WITHDRAWN`. Both `analyze` and `list` accept `--database` to override the
+default SQLite path.
 
-Application statuses: `SAVED`, `APPLIED`, `INTERVIEW`, `REJECTED`, `OFFER`,
-`WITHDRAWN`. The tracker database defaults to `data/tracker.db` and is
-gitignored, since it holds your personal application history.
-
-## Hard filters
-
-Hard filters are pass/fail gates kept entirely separate from weighted
-scoring. Failing any one of them forces a `SKIP` recommendation regardless of
-score, and the reason appears in `hard_filter_reasons`.
-
-Issues that are worth knowing but should not disqualify a job appear in
-`concerns` instead. Concerns never affect the score, the filters, or the
-recommendation — they exist so an ambiguity can be surfaced rather than
-turned into a false negative.
-
-Each rule abstains when the posting is ambiguous, so silence in a job
-description never disqualifies it:
-
-- **Experience** — rejects only when the required years exceed
-  `max_required_years + tolerance_years`. With the shipped values (2 + 2), a
-  posting asking for 3 or 4 years still reaches weighted scoring; 5+ is
-  filtered. A posting that states no number is never filtered.
-- **Work authorization** — rejects only when the posting rules out your
-  *current* status, never merely because it declines future sponsorship. A
-  generic "we are unable to sponsor" or "no H-1B" is recorded as
-  `not_offered` and preserved, because it does not stop someone already
-  authorized (for example on OPT) from taking the job. Only
-  `permanent_authorization_required` ("no F-1 candidates", "permanent
-  unrestricted work authorization required") and `citizenship_required`
-  disqualify. Most postings say nothing, which is recorded as
-  `not_mentioned` and passes. A stance the model cannot quote a sentence for
-  is downgraded to `not_mentioned`, so a job is never filtered on invented
-  evidence.
-- **Location** — rejects only locations you explicitly list under
-  `locations.unavailable`. Leave that list empty to disable the filter. A
-  remote posting nominally based in an excluded city still passes.
-
-## Layout
-
-```
-src/job_search_agent/
-  main.py           CLI: argument parsing and command dispatch
-  candidate.py      CandidateProfile and its sub-models
-  models.py         Job requirements, LLM output, final analysis
-  config_models.py  Validated schemas for the YAML config files
-  config_loader.py  YAML loading
-  prompts.py        Extraction and scoring prompt text
-  ai_client.py      OpenAI structured-output client
-  protocols.py      JobEvaluator protocol (keeps openai out of unit tests)
-  job_matcher.py    Orchestration
-  page_loader.py    URL fetch and HTML-to-text adapter
-  scoring.py        Overall score and recommendation (pure functions)
-  filters.py        Hard filters (pure functions)
-  concerns.py       Non-blocking warnings (pure functions)
-  tracker.py        SQLite job tracker
-  reporting.py      Console output and JSON reports
-```
+JSON reports, SQLite databases, and the private candidate profile are ignored
+by Git because they can contain personal information.
 
 ## Tests
+
+Run the complete suite:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Unit tests never call the OpenAI API. `tests/conftest.py` provides a
-`FakeAIClient` and model builders; `JobMatcher` depends on the `JobEvaluator`
-protocol rather than the concrete client, so the test suite does not even
-import `openai` for the core paths.
+Tests use fake structured LLM responses and mocked HTTP calls; they do not
+require an OpenAI key or external API access. The suite covers configuration,
+CLI behavior, ingestion, evidence units, grounding, deterministic component
+and overall scoring, sponsorship policy, hard filters, reporting, and SQLite
+tracking.
+
+## Project layout
+
+```text
+config/                  Private-profile template and scoring/filter settings
+src/job_search_agent/    CLI, ingestion, extraction, scoring, and tracking
+tests/                   Automated unit and integration tests
+evaluation/              Repeatability evaluation tooling
+jobs/                    Example postings and authorization-language fixtures
+data/processed/          Local generated JSON reports (ignored)
+```

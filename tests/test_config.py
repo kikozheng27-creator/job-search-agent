@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from job_search_agent.config_loader import (
+    load_candidate_profile,
     load_config,
     load_filter_config,
     load_scoring_config,
@@ -169,9 +170,11 @@ def test_shipped_config_files_are_valid():
     """The configs committed to the repo must always load."""
     config_dir = Path(__file__).resolve().parents[1] / "config"
 
+    profile = load_candidate_profile(config_dir / "candidate_profile.example.yaml")
     scoring = ScoringConfig.model_validate(load_config(config_dir / "scoring.yaml"))
     filters = FilterConfig.model_validate(load_config(config_dir / "filters.yaml"))
 
+    assert profile.target_job_families
     assert scoring.thresholds.strongly_apply > scoring.thresholds.apply
     assert scoring.skills.required_weight + scoring.skills.preferred_weight == 1.0
     assert filters.experience.max_required_years >= 0

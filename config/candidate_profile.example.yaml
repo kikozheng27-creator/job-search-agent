@@ -1,0 +1,58 @@
+# Fictional example data only. Copy this file to candidate_profile.yaml and
+# replace every value with your own information before running an analysis.
+
+target_job_families:
+  - Data Analyst
+  - Reporting Analyst
+
+education:
+  - degree: "Bachelor's"
+    field: Example Field
+    institution: Example University
+    graduation_year: 2030
+
+skills:
+  programming:
+    - Python
+    - R
+    - SQL
+  statistics:
+    - Descriptive Statistics
+  tools:
+    - Example BI Tool
+
+experience_level: entry_level
+years_of_experience: 1.0
+
+# Replace all work-authorization values with accurate information.
+work_authorization:
+  status: REPLACE_WITH_YOUR_STATUS
+  requires_sponsorship: false
+  is_citizen_or_permanent_resident: false
+  requires_future_sponsorship: false
+
+projects:
+  - name: Example Analytics Project
+    description: Built a dashboard from generated sample data.
+    skills_used:
+      - Python
+      - SQL
+
+work_experience:
+  - title: Junior Data Analyst
+    organization: Example Company
+    start_date: 2029-01
+    end_date: 2030-01
+    highlights:
+      - Created reports from synthetic data.
+
+locations:
+  preferred:
+    - Example City
+  unavailable: []
+  work_modes:
+    - remote
+    - hybrid
+
+preferred_industries:
+  - Technology

@@ -188,4 +188,4 @@ def test_prompt_contains_the_profile_and_the_posting():
     text = prompt("Unique posting body")
 
     assert "Unique posting body" in text
-    assert "Biostatistics" in text
+    assert "Example Field" in text
