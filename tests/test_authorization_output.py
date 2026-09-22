@@ -13,13 +13,29 @@ from job_search_agent.authorization_claims import (
 from job_search_agent.candidate import WorkAuthorization
 from job_search_agent.config_models import ExperienceFilterConfig, FilterConfig
 from job_search_agent.job_matcher import JobMatcher
-from job_search_agent.models import JobEvaluation, Recommendation, SponsorshipStance
+from job_search_agent.models import (
+    CareerRelevanceEvidence,
+    JobEvaluation,
+    PreferredIndustryRelation,
+    Recommendation,
+    SponsorshipStance,
+    TargetFamilyRelation,
+)
 
 
 INVENTED_F1 = "work authorization not permitted for F-1 candidates"
 INVENTED_SPONSORSHIP = "visa sponsorship is not available for this role"
 SUPPORTED_F1 = "F-1 candidates are not eligible"
 SUPPORTED_H1B = "employer does not sponsor H-1B"
+CAREER_UNCLEAR_CONCERN = (
+    "Career Relevance used the deterministic neutral abstention "
+    "score because role-family alignment could not be established "
+    "confidently."
+)
+
+
+def concerns_without_career_abstention(concerns: list[str]) -> list[str]:
+    return [concern for concern in concerns if concern != CAREER_UNCLEAR_CONCERN]
 
 
 def opt_profile():
@@ -47,6 +63,10 @@ def evaluation_with_prose(
         strengths=strengths or ["Strong R skills"],
         missing_requirements=missing_requirements,
         reasoning=reasoning,
+        career_alignment=CareerRelevanceEvidence(
+            target_family_relation=TargetFamilyRelation.UNCLEAR,
+            preferred_industry_relation=PreferredIndustryRelation.NOT_APPLICABLE,
+        ),
     )
 
 
@@ -107,7 +127,7 @@ def test_silence_does_not_surface_invented_sponsorship_concern():
     )
 
     assert result.requirements.sponsorship is SponsorshipStance.NOT_MENTIONED
-    assert result.concerns == []
+    assert concerns_without_career_abstention(result.concerns) == []
     assert result.missing_requirements == []
     assert result.strengths == []
     assert "sponsorship" not in result.reasoning.lower()
@@ -170,8 +190,9 @@ def test_no_h1b_keeps_generic_concern_but_not_f1_prohibition():
     assert result.requirements.sponsorship is SponsorshipStance.NOT_OFFERED
     assert result.passes_hard_filters is True
     assert result.recommendation == Recommendation.MAYBE
-    assert len(result.concerns) == 1
-    assert "does not offer visa sponsorship" in result.concerns[0]
+    concerns = concerns_without_career_abstention(result.concerns)
+    assert len(concerns) == 1
+    assert "does not offer visa sponsorship" in concerns[0]
     assert INVENTED_F1 not in result.missing_requirements
     assert SUPPORTED_H1B in result.missing_requirements
     assert "does not sponsor H-1B" in result.reasoning
@@ -185,7 +206,7 @@ def test_silence_stance_remains_not_mentioned():
     )
 
     assert result.requirements.sponsorship is SponsorshipStance.NOT_MENTIONED
-    assert result.concerns == []
+    assert concerns_without_career_abstention(result.concerns) == []
     assert result.passes_hard_filters is True
 
 
@@ -267,7 +288,7 @@ def test_overall_score_and_recommendation_stay_deterministic():
         silent_jd,
     )
 
-    assert invented.overall_score == clean.overall_score == 67.0
+    assert invented.overall_score == clean.overall_score == 58.0
     assert invented.recommendation == clean.recommendation == Recommendation.MAYBE
     assert invented.scores.skills == clean.scores.skills == 80
 
@@ -283,7 +304,9 @@ def test_generic_no_sponsorship_does_not_become_f1_ban():
 
     assert result.requirements.sponsorship is SponsorshipStance.NOT_OFFERED
     assert result.passes_hard_filters is True
-    assert len(result.concerns) == 1
+    concerns = concerns_without_career_abstention(result.concerns)
+    assert len(concerns) == 1
+    assert "does not offer visa sponsorship" in concerns[0]
     assert INVENTED_F1 not in result.missing_requirements
     assert result.reasoning
     assert "F-1" not in result.reasoning
@@ -437,7 +460,7 @@ def test_empty_sanitized_reasoning_gets_deterministic_fallback():
     assert "F-1" not in result.reasoning
     assert "authorization" not in result.reasoning.lower()
     assert "sponsorship" not in result.reasoning.lower()
-    assert result.overall_score == 67.0
+    assert result.overall_score == 58.0
     assert result.recommendation == Recommendation.MAYBE
 
 
@@ -476,7 +499,7 @@ def test_mixed_authorization_reasoning_fallback_uses_experience_hard_filter():
     assert "sponsorship" not in result.reasoning.lower()
     assert "F-1" not in result.reasoning
     assert len(result.hard_filter_reasons) == 1
-    assert result.overall_score == 67.0
+    assert result.overall_score == 58.0
 
 
 def test_valid_llm_reasoning_is_not_replaced_by_fallback():
@@ -492,5 +515,5 @@ def test_valid_llm_reasoning_is_not_replaced_by_fallback():
     assert result.reasoning == original
     assert "hard-filter" not in result.reasoning
     assert result.recommendation == Recommendation.MAYBE
-    assert result.overall_score == 67.0
+    assert result.overall_score == 58.0
 

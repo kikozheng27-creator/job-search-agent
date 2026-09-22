@@ -14,6 +14,7 @@ from job_search_agent.config_models import (
     Thresholds,
 )
 from job_search_agent.models import (
+    CareerRelevanceEvidence,
     ComponentScores,
     JobAnalysis,
     JobEvaluation,
@@ -136,6 +137,7 @@ def make_evaluation(
     scores: ComponentScores | None = None,
     skill_claims: list | None = None,
     skill_unit_decisions: list | None = None,
+    career_alignment=None,
 ) -> JobEvaluation:
     return JobEvaluation(
         requirements=requirements or make_requirements(),
@@ -148,6 +150,7 @@ def make_evaluation(
         reasoning="The candidate matches most core requirements.",
         skill_claims=skill_claims or [],
         skill_unit_decisions=skill_unit_decisions or [],
+        career_alignment=career_alignment or CareerRelevanceEvidence(),
     )
 
 

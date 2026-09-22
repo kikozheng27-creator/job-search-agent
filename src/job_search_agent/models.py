@@ -174,6 +174,39 @@ class JobRequirements(BaseModel):
         return self
 
 
+class TargetFamilyRelation(str, Enum):
+    """How the role sits against the candidate's target job families."""
+
+    DIRECT = "direct"
+    ADJACENT = "adjacent"
+    UNRELATED = "unrelated"
+    UNCLEAR = "unclear"
+
+
+class PreferredIndustryRelation(str, Enum):
+    """How the posting's industry sits against preferred industries."""
+
+    MATCH = "match"
+    MISMATCH = "mismatch"
+    UNKNOWN = "unknown"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class CareerRelevanceEvidence(BaseModel):
+    """Candidate-relative alignment. Not an intrinsic property of the job.
+
+    Python scores career relevance from these relations. A non-abstaining
+    relation is kept only when its quote appears in the posting.
+    """
+
+    target_family_relation: TargetFamilyRelation = TargetFamilyRelation.UNCLEAR
+    target_family_evidence: str | None = None
+    preferred_industry_relation: PreferredIndustryRelation = (
+        PreferredIndustryRelation.UNKNOWN
+    )
+    preferred_industry_evidence: str | None = None
+
+
 class ComponentScores(BaseModel):
     skills: int = Field(ge=0, le=100)
     education: int = Field(ge=0, le=100)
@@ -196,6 +229,9 @@ class JobEvaluation(BaseModel):
     reasoning: str
     skill_claims: list[SkillClaim] = Field(default_factory=list)
     skill_unit_decisions: list[UnitSkillDecision] = Field(default_factory=list)
+    career_alignment: CareerRelevanceEvidence = Field(
+        default_factory=CareerRelevanceEvidence
+    )
 
 
 class JobAnalysis(BaseModel):
@@ -221,6 +257,9 @@ class JobAnalysis(BaseModel):
     analyzed_at: datetime = Field(default_factory=datetime.now)
     skill_extraction: SkillExtractionReport = Field(
         default_factory=SkillExtractionReport
+    )
+    career_alignment: CareerRelevanceEvidence = Field(
+        default_factory=CareerRelevanceEvidence
     )
 
     @property

@@ -177,6 +177,24 @@ def test_the_two_sponsorship_cases_are_explicitly_contrasted():
 # --- unchanged guarantees ---------------------------------------------------
 
 
+def test_career_relevance_is_alignment_not_a_qualification_score():
+    text = prompt()
+
+    assert (
+        "how aligned this role is with the candidate's target job families "
+        "and preferred industries" in text
+    )
+    assert "It is not a qualification judgment." in text
+    assert "do not decide this score" in text
+    assert (
+        "Skills, skill overlap, education, degree level, years of experience, "
+        "sponsorship, work authorization, and location must not affect these "
+        "relations." in text
+    )
+    assert "required abstention when evidence is missing" in text
+    assert "Do not invent a quote." in text
+
+
 def test_prompt_still_forbids_the_model_scoring_or_deciding():
     text = prompt()
 

@@ -17,7 +17,13 @@ from job_search_agent.main import (
     main,
     parse_args,
 )
-from job_search_agent.models import Recommendation, SponsorshipStance
+from job_search_agent.models import (
+    CareerRelevanceEvidence,
+    PreferredIndustryRelation,
+    Recommendation,
+    SponsorshipStance,
+    TargetFamilyRelation,
+)
 from job_search_agent.tracker import ApplicationStatus, JobTracker
 
 
@@ -41,10 +47,26 @@ def public_config_dir(tmp_path):
     return copy_public_config(tmp_path / "config")
 
 
-def entry_level_evaluation():
+def high_fit_alignment(job_description: str) -> CareerRelevanceEvidence:
+    """Direct family and industry match, quoted from this posting.
+
+    The example profile targets analyst roles in technology. These CLI
+    tests exercise a high-fit public-config path, so the fixture states
+    that alignment instead of leaving Career Relevance unclear.
+    """
+    return CareerRelevanceEvidence(
+        target_family_relation=TargetFamilyRelation.DIRECT,
+        target_family_evidence=job_description,
+        preferred_industry_relation=PreferredIndustryRelation.MATCH,
+        preferred_industry_evidence=job_description,
+    )
+
+
+def entry_level_evaluation(job_description: str):
     """A posting the shipped filters.yaml lets through to weighted scoring."""
     return make_evaluation(
         requirements=make_requirements(minimum_years_experience=1),
+        career_alignment=high_fit_alignment(job_description),
     )
 
 
@@ -53,10 +75,11 @@ def entry_level_evaluation():
 
 def test_analysis_runs_against_the_public_configuration(public_config_dir):
     """Exercises the public config files with a fake AI client."""
-    ai_client = FakeAIClient(entry_level_evaluation())
+    job_description = "Example Pharma is hiring a Biostatistician."
+    ai_client = FakeAIClient(entry_level_evaluation(job_description))
 
     result = analyze_job_description(
-        job_description="Example Pharma is hiring a Biostatistician.",
+        job_description=job_description,
         ai_client=ai_client,
         source_url="https://example.com/jobs/1",
         config_dir=public_config_dir,
@@ -64,7 +87,8 @@ def test_analysis_runs_against_the_public_configuration(public_config_dir):
 
     assert result.company == "Example Pharma"
     assert result.job_title == "Biostatistician"
-    assert result.overall_score == 86.0
+    assert result.scores.career_relevance == 100
+    assert result.overall_score == 87.0
     assert result.source_url == "https://example.com/jobs/1"
     assert result.passes_hard_filters is True
     assert result.recommendation == Recommendation.STRONGLY_APPLY
@@ -76,17 +100,20 @@ def test_public_configuration_filters_a_senior_posting(public_config_dir):
     The shipped filters allow up to 2 years plus 2 years of tolerance, so a
     posting demanding 5 years is out of range for an entry-level candidate.
     """
+    job_description = "Example"
     evaluation = make_evaluation(
         requirements=make_requirements(minimum_years_experience=5),
+        career_alignment=high_fit_alignment(job_description),
     )
 
     result = analyze_job_description(
-        job_description="Example",
+        job_description=job_description,
         ai_client=FakeAIClient(evaluation),
         config_dir=public_config_dir,
     )
 
-    assert result.overall_score == 65.2
+    assert result.scores.career_relevance == 100
+    assert result.overall_score == 66.2
     assert result.passes_hard_filters is False
     assert result.recommendation == Recommendation.SKIP
     assert len(result.hard_filter_reasons) == 1
@@ -96,15 +123,17 @@ def test_public_configuration_allows_a_posting_inside_the_tolerance(
     public_config_dir,
 ):
     """3 and 4 years must reach weighted scoring rather than being filtered."""
+    job_description = "Example"
     for required_years in (3, 4):
         evaluation = make_evaluation(
             requirements=make_requirements(
                 minimum_years_experience=required_years
             ),
+            career_alignment=high_fit_alignment(job_description),
         )
 
         result = analyze_job_description(
-            job_description="Example",
+            job_description=job_description,
             ai_client=FakeAIClient(evaluation),
             config_dir=public_config_dir,
         )
@@ -309,12 +338,13 @@ def test_analyze_and_save_writes_to_the_tracker(tmp_path, monkeypatch, capsys):
     workspace.mkdir()
     copy_public_config(workspace / "config")
 
+    posting_text = "Example Pharma is hiring."
     posting = workspace / "posting.txt"
-    posting.write_text("Example Pharma is hiring.", encoding="utf-8")
+    posting.write_text(posting_text, encoding="utf-8")
 
     monkeypatch.setattr(
         "job_search_agent.ai_client.AIClient",
-        lambda: FakeAIClient(entry_level_evaluation()),
+        lambda: FakeAIClient(entry_level_evaluation(posting_text)),
     )
     monkeypatch.chdir(workspace)
 
@@ -340,7 +370,7 @@ def test_analyze_and_save_writes_to_the_tracker(tmp_path, monkeypatch, capsys):
     output = capsys.readouterr().out
 
     assert exit_code == 0
-    assert "Overall Match: 86.0 / 100" in output
+    assert "Overall Match: 87.0 / 100" in output
     assert "Recommendation: STRONGLY_APPLY" in output
 
     with JobTracker(database) as tracker:
@@ -350,7 +380,7 @@ def test_analyze_and_save_writes_to_the_tracker(tmp_path, monkeypatch, capsys):
     assert jobs[0].status == ApplicationStatus.APPLIED
     assert jobs[0].notes == "Applied via referral"
     assert jobs[0].source_url == "https://example.com/jobs/7"
-    assert jobs[0].match_score == 86.0
+    assert jobs[0].match_score == 87.0
 
 
 def test_analyze_without_save_leaves_the_tracker_empty(
@@ -360,12 +390,13 @@ def test_analyze_without_save_leaves_the_tracker_empty(
     workspace.mkdir()
     copy_public_config(workspace / "config")
 
+    posting_text = "Example Pharma is hiring."
     posting = workspace / "posting.txt"
-    posting.write_text("Example Pharma is hiring.", encoding="utf-8")
+    posting.write_text(posting_text, encoding="utf-8")
 
     monkeypatch.setattr(
         "job_search_agent.ai_client.AIClient",
-        lambda: FakeAIClient(entry_level_evaluation()),
+        lambda: FakeAIClient(entry_level_evaluation(posting_text)),
     )
     monkeypatch.chdir(workspace)
 
@@ -401,7 +432,7 @@ def test_analyze_url_feeds_extracted_text_into_the_matcher(
     monkeypatch.setattr("job_search_agent.page_loader.fetch_html", fake_fetch)
     monkeypatch.setattr(
         "job_search_agent.ai_client.AIClient",
-        lambda: FakeAIClient(entry_level_evaluation()),
+        lambda: FakeAIClient(entry_level_evaluation("Biostatistician")),
     )
     monkeypatch.chdir(workspace)
 

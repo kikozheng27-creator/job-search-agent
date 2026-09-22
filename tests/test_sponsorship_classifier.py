@@ -14,7 +14,13 @@ from job_search_agent.concerns import collect_concerns
 from job_search_agent.config_models import ExperienceFilterConfig, FilterConfig
 from job_search_agent.filters import check_hard_filters
 from job_search_agent.job_matcher import JobMatcher
-from job_search_agent.models import Recommendation, SponsorshipStance
+from job_search_agent.models import (
+    CareerRelevanceEvidence,
+    PreferredIndustryRelation,
+    Recommendation,
+    SponsorshipStance,
+    TargetFamilyRelation,
+)
 from job_search_agent.sponsorship_classifier import (
     apply_sponsorship_classification,
     classify_sentence,
@@ -251,11 +257,17 @@ def test_python_backed_stance_survives_job_analysis_without_llm_quote():
 
 
 def test_classifier_does_not_change_component_scores_in_the_matcher():
+    job_description = read_fixture("01_no_f1.txt")
     evaluation = make_evaluation(
         requirements=make_requirements(
             minimum_years_experience=1,
             sponsorship=SponsorshipStance.NOT_OFFERED,
             sponsorship_language="This position is not open to F-1 candidates.",
+        ),
+        career_alignment=CareerRelevanceEvidence(
+            target_family_relation=TargetFamilyRelation.DIRECT,
+            target_family_evidence=job_description,
+            preferred_industry_relation=PreferredIndustryRelation.NOT_APPLICABLE,
         ),
     )
 
@@ -267,10 +279,11 @@ def test_classifier_does_not_change_component_scores_in_the_matcher():
 
     result = matcher.match(
         profile=opt_profile(),
-        job_description=read_fixture("01_no_f1.txt"),
+        job_description=job_description,
     )
 
-    assert result.overall_score == 67.0
+    assert result.scores.career_relevance == 100
+    assert result.overall_score == 68.0
     assert result.scores.skills == 80
     assert result.recommendation == Recommendation.SKIP
     assert result.passes_hard_filters is False

@@ -14,7 +14,31 @@ from job_search_agent.config_models import (
     FilterConfig,
 )
 from job_search_agent.job_matcher import JobMatcher
-from job_search_agent.models import Recommendation, SponsorshipStance
+from job_search_agent.models import (
+    CareerRelevanceEvidence,
+    PreferredIndustryRelation,
+    Recommendation,
+    SponsorshipStance,
+    TargetFamilyRelation,
+)
+
+
+CAREER_UNCLEAR_CONCERN = (
+    "Career Relevance used the deterministic neutral abstention "
+    "score because role-family alignment could not be established "
+    "confidently."
+)
+
+
+def unclear_career_alignment() -> CareerRelevanceEvidence:
+    return CareerRelevanceEvidence(
+        target_family_relation=TargetFamilyRelation.UNCLEAR,
+        preferred_industry_relation=PreferredIndustryRelation.NOT_APPLICABLE,
+    )
+
+
+def concerns_without_career_abstention(concerns: list[str]) -> list[str]:
+    return [concern for concern in concerns if concern != CAREER_UNCLEAR_CONCERN]
 
 
 def build_matcher(
@@ -29,17 +53,19 @@ def build_matcher(
 
 
 def test_job_matcher_calculates_correct_score():
-    result = build_matcher().match(
+    result = build_matcher(
+        evaluation=make_evaluation(career_alignment=unclear_career_alignment())
+    ).match(
         profile=make_profile(),
         job_description="Example job description",
     )
 
-    assert result.overall_score == 67.0
+    assert result.overall_score == 58.0
     assert result.recommendation == Recommendation.MAYBE
     assert result.scores.skills == 80
     assert result.scores.education == 100
     assert result.scores.experience == 0
-    assert result.scores.career_relevance == 95
+    assert result.scores.career_relevance == 50
 
 
 def test_job_matcher_preserves_evaluation_details():
@@ -110,6 +136,7 @@ def test_concerns_are_reported_without_changing_the_verdict():
         requirements=make_requirements(
             sponsorship=SponsorshipStance.NOT_OFFERED,
         ),
+        career_alignment=unclear_career_alignment(),
     )
 
     profile = make_profile(
@@ -131,18 +158,21 @@ def test_concerns_are_reported_without_changing_the_verdict():
 
     assert result.passes_hard_filters is True
     assert result.recommendation == Recommendation.MAYBE
-    assert result.overall_score == 67.0
-    assert len(result.concerns) == 1
-    assert "does not offer visa sponsorship" in result.concerns[0]
+    assert result.overall_score == 58.0
+    concerns = concerns_without_career_abstention(result.concerns)
+    assert len(concerns) == 1
+    assert "does not offer visa sponsorship" in concerns[0]
 
 
 def test_concerns_are_empty_when_nothing_applies():
-    result = build_matcher().match(
+    result = build_matcher(
+        evaluation=make_evaluation(career_alignment=unclear_career_alignment())
+    ).match(
         profile=make_profile(),
         job_description="Example",
     )
 
-    assert result.concerns == []
+    assert concerns_without_career_abstention(result.concerns) == []
 
 
 def test_permanent_authorization_requirement_forces_skip():
@@ -150,6 +180,7 @@ def test_permanent_authorization_requirement_forces_skip():
         requirements=make_requirements(
             sponsorship=SponsorshipStance.PERMANENT_AUTHORIZATION_REQUIRED,
         ),
+        career_alignment=unclear_career_alignment(),
     )
 
     profile = make_profile(
@@ -171,7 +202,7 @@ def test_permanent_authorization_requirement_forces_skip():
 
     assert result.passes_hard_filters is False
     assert result.recommendation == Recommendation.SKIP
-    assert result.concerns == []
+    assert concerns_without_career_abstention(result.concerns) == []
 
 
 def test_python_overrides_a_wrong_llm_sponsorship_stance():
@@ -182,6 +213,7 @@ def test_python_overrides_a_wrong_llm_sponsorship_stance():
             sponsorship=SponsorshipStance.NOT_OFFERED,
             sponsorship_language="This position is not open to F-1 candidates.",
         ),
+        career_alignment=unclear_career_alignment(),
     )
 
     profile = make_profile(
@@ -204,13 +236,16 @@ def test_python_overrides_a_wrong_llm_sponsorship_stance():
     )
     assert result.passes_hard_filters is False
     assert result.recommendation == Recommendation.SKIP
-    assert result.overall_score == 67.0
+    assert result.overall_score == 58.0
     assert result.scores.skills == 80
-    assert result.concerns == []
+    assert concerns_without_career_abstention(result.concerns) == []
 
 
 def test_job_matcher_ignores_the_llm_skills_score():
-    evaluation = make_evaluation(scores=make_scores(skills=12))
+    evaluation = make_evaluation(
+        scores=make_scores(skills=12),
+        career_alignment=unclear_career_alignment(),
+    )
 
     result = build_matcher(evaluation=evaluation).match(
         profile=make_profile(),
@@ -220,7 +255,7 @@ def test_job_matcher_ignores_the_llm_skills_score():
     assert result.scores.skills == 80
     assert result.scores.education == 100
     assert result.scores.experience == 0
-    assert result.scores.career_relevance == 95
+    assert result.scores.career_relevance == 50
 
 
 def test_job_matcher_ignores_the_llm_experience_score():

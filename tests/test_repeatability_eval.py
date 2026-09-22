@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 
 from evaluation.repeatability import (
     SnapshotEvaluator,
+    _career_relevance_comparison,
     categorical_summary,
     largest_skills_swing,
     pairwise_jaccard,
@@ -195,8 +196,45 @@ def test_record_run_does_not_call_openai_or_the_network():
     assert row["candidate_degrees"] == ["Master's"]
     assert row["llm_scores"]["education"] == 100
     assert row["python_overwrote_llm_education_score"] is False
+    assert row["llm_career_relevance_score"] == 95
+    assert row["career_relevance_score"] == 50
+    assert row["target_family_alignment"] == "unclear"
+    assert row["preferred_industry_alignment"] == "not_applicable"
+    assert row["python_overwrote_llm_career_relevance_score"] is True
     assert row["evidence_units"]["unit_count"] >= 1
     assert "omitted_unit_ids" in row["evidence_units"]
+
+
+def test_identical_career_relations_have_zero_production_range():
+    def row(run, family, industry, production, raw):
+        return {
+            "run": run,
+            "career_relevance_score": production,
+            "target_family_alignment": family,
+            "preferred_industry_alignment": industry,
+            "llm_scores": {"career_relevance": raw},
+            "python_overwrote_llm_career_relevance_score": raw != production,
+        }
+
+    stable = _career_relevance_comparison(
+        [
+            row(1, "direct", "not_applicable", 100, 80),
+            row(2, "direct", "not_applicable", 100, 0),
+        ]
+    )
+    varied = _career_relevance_comparison(
+        [
+            row(1, "direct", "not_applicable", 100, 80),
+            row(2, "unrelated", "not_applicable", 0, 80),
+        ]
+    )
+
+    assert stable["relations_stable"] is True
+    assert stable["production_range_zero_when_relations_stable"] is True
+    assert stable["python_overwrote_llm_career_relevance_score"] == [1, 2]
+    assert stable["llm_score_summary"]["values"] == [80, 0]
+    assert varied["relations_stable"] is False
+    assert varied["production_range_zero_when_relations_stable"] is False
 
 
 def test_identical_year_inputs_are_treated_as_deterministic():
