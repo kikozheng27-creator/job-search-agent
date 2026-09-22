@@ -73,13 +73,12 @@ class JobMatcher:
                 units=units,
             )
 
-        score_from_inventory = True
-        if (
-            extraction_report.status is SkillExtractionStatus.UNRESOLVED
-            and not evaluation.requirements.required_skills
-            and not evaluation.requirements.preferred_skills
-        ):
-            score_from_inventory = False
+        # Partial UNRESOLVED lists stay on requirements for inspection, but
+        # they are not a production inventory. NOT_RUN still scores the
+        # non-dedicated grounded lists.
+        score_from_inventory = (
+            extraction_report.status is not SkillExtractionStatus.UNRESOLVED
+        )
 
         if score_from_inventory:
             evaluation.scores.skills = score_skills(
@@ -143,8 +142,9 @@ class JobMatcher:
         if extraction_report.status is SkillExtractionStatus.UNRESOLVED:
             unit_ids = ", ".join(extraction_report.unresolved_unit_ids) or "unknown"
             concerns.append(
-                "Skill inventory extraction is unresolved for "
-                f"{unit_ids}. This is not a genuine empty required-skill list."
+                "Dedicated skill extraction remained unresolved after the "
+                f"bounded repair pass for {unit_ids}. The skills score was "
+                "not computed from this partial inventory."
             )
 
         return JobAnalysis(

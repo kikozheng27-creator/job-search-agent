@@ -249,9 +249,117 @@ def test_unresolved_empty_requirement_is_not_a_genuine_zero_inventory():
 
     assert result.skill_extraction.status is SkillExtractionStatus.UNRESOLVED
     assert result.requirements.required_skills == []
+    assert result.requirements.preferred_skills == []
     assert result.scores.skills == 12
     assert result.skill_extraction.skills_scored_from_inventory is False
-    assert any("unresolved" in concern.lower() for concern in result.concerns)
+    assert_unresolved_concern(result)
+
+
+MODEL_SKILLS_SCORE = 12
+
+
+def inventory_for(posting: str, **names_by_needle: list[str]) -> SkillInventory:
+    units = skill_candidate_units(build_evidence_units(posting))
+    names_by_id: dict[str, list[str]] = {}
+    for unit in units:
+        for needle, names in names_by_needle.items():
+            if needle in unit.text:
+                names_by_id[unit.id] = names
+    return filled_inventory(posting, names_by_id)
+
+
+def match_dedicated(
+    posting: str,
+    skill_inventory: SkillInventory,
+    *,
+    repair_inventory: SkillInventory | None = None,
+    skills_score: int = MODEL_SKILLS_SCORE,
+):
+    matcher = JobMatcher(
+        ai_client=FakeAIClient(
+            make_evaluation(scores=make_scores(skills=skills_score)),
+            skill_inventory=skill_inventory,
+            repair_inventory=repair_inventory,
+        ),
+        scoring_config=scoring(),
+        filter_config=PERMISSIVE_FILTERS,
+    )
+    return matcher.match(make_profile(), posting)
+
+
+def assert_unresolved_concern(result) -> None:
+    concern = " ".join(result.concerns).lower()
+    assert "unresolved" in concern
+    assert "repair" in concern
+    assert "genuine empty" not in concern
+
+
+def assert_unresolved_inventory_is_not_scored(result, required, preferred) -> None:
+    assert result.skill_extraction.status is SkillExtractionStatus.UNRESOLVED
+    assert result.requirements.required_skills == required
+    assert result.requirements.preferred_skills == preferred
+    assert result.scores.skills == MODEL_SKILLS_SCORE
+    inventory_score = score_skills(
+        make_profile(),
+        result.requirements,
+        DEFAULT_SKILLS,
+    )
+    assert inventory_score != MODEL_SKILLS_SCORE
+    assert result.scores.skills != inventory_score
+    assert result.skill_extraction.skills_scored_from_inventory is False
+    assert_unresolved_concern(result)
+
+
+def test_unresolved_partial_required_and_preferred_lists_are_not_scored():
+    posting = PYTHON_JUPYTER_POSTING
+    partial = inventory_for(posting, Python=["Python"], SAS=["SAS"])
+
+    result = match_dedicated(posting, partial, repair_inventory=partial)
+
+    assert_unresolved_inventory_is_not_scored(
+        result,
+        ["Python"],
+        ["SAS"],
+    )
+
+
+def test_unresolved_required_only_inventory_is_not_scored():
+    posting = PYTHON_JUPYTER_POSTING
+    partial = inventory_for(posting, Python=["Python"])
+
+    result = match_dedicated(posting, partial, repair_inventory=partial)
+
+    assert_unresolved_inventory_is_not_scored(result, ["Python"], [])
+
+
+def test_unresolved_preferred_only_inventory_is_not_scored():
+    posting = PYTHON_JUPYTER_POSTING
+    partial = inventory_for(posting, SAS=["SAS"])
+
+    result = match_dedicated(posting, partial, repair_inventory=partial)
+
+    assert_unresolved_inventory_is_not_scored(result, [], ["SAS"])
+
+
+def test_complete_dedicated_inventory_still_uses_deterministic_skill_score():
+    posting = PYTHON_JUPYTER_POSTING
+    complete = inventory_for(
+        posting,
+        Python=["Python", "Jupyter Notebooks"],
+    )
+
+    result = match_dedicated(posting, complete, skills_score=90)
+
+    assert result.skill_extraction.status is SkillExtractionStatus.COMPLETE
+    assert result.requirements.required_skills == ["Python", "Jupyter Notebooks"]
+    assert result.requirements.preferred_skills == []
+    assert result.skill_extraction.skills_scored_from_inventory is True
+    assert result.scores.skills == score_skills(
+        make_profile(),
+        result.requirements,
+        DEFAULT_SKILLS,
+    )
+    assert result.scores.skills != 90
 
 
 def test_genuine_non_skill_unit_may_produce_no_skill():
