@@ -18,6 +18,7 @@ from evaluation.repeatability import (
     categorical_summary,
     largest_skills_swing,
     pairwise_jaccard,
+    python_education_consistent_on_identical_inputs,
     python_experience_consistent_on_identical_inputs,
     python_skills_consistent_on_identical_inputs,
     record_run,
@@ -190,6 +191,10 @@ def test_record_run_does_not_call_openai_or_the_network():
     assert row["candidate_years_of_experience"] == 0
     assert row["experience_score"] == 0
     assert row["llm_scores"]["experience"] == 70
+    assert row["education_score"] == 100
+    assert row["candidate_degrees"] == ["Master's"]
+    assert row["llm_scores"]["education"] == 100
+    assert row["python_overwrote_llm_education_score"] is False
     assert row["evidence_units"]["unit_count"] >= 1
     assert "omitted_unit_ids" in row["evidence_units"]
 
@@ -220,6 +225,34 @@ def test_identical_year_inputs_are_treated_as_deterministic():
 
     assert result["identical_year_inputs_always_same_score"] is True
     assert result["distinct_year_input_pairs"] == 2
+
+
+def test_identical_education_inputs_are_treated_as_deterministic():
+    runs = [
+        {
+            "run": 1,
+            "candidate_degrees": ["Master's"],
+            "required_degree": None,
+            "education_score": 100,
+        },
+        {
+            "run": 2,
+            "candidate_degrees": ["Master's"],
+            "required_degree": None,
+            "education_score": 100,
+        },
+        {
+            "run": 3,
+            "candidate_degrees": ["Bachelor's"],
+            "required_degree": "Master's",
+            "education_score": 70,
+        },
+    ]
+
+    result = python_education_consistent_on_identical_inputs(runs)
+
+    assert result["identical_education_inputs_always_same_score"] is True
+    assert result["distinct_education_input_pairs"] == 2
 
 
 def test_pairwise_jaccard_on_normalized_skill_sets():

@@ -2,6 +2,7 @@ from job_search_agent.authorization_claims import sanitize_analysis_prose
 from job_search_agent.candidate import CandidateProfile
 from job_search_agent.concerns import collect_concerns
 from job_search_agent.config_models import FilterConfig, ScoringConfig
+from job_search_agent.education_scorer import score_education
 from job_search_agent.evidence_units import build_evidence_units
 from job_search_agent.experience_scorer import score_experience
 from job_search_agent.filters import check_hard_filters
@@ -88,6 +89,10 @@ class JobMatcher:
             )
 
         evaluation.scores.experience = score_experience(
+            profile,
+            evaluation.requirements,
+        )
+        evaluation.scores.education = score_education(
             profile,
             evaluation.requirements,
         )

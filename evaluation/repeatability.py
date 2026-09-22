@@ -234,6 +234,29 @@ def python_experience_consistent_on_identical_inputs(runs: list[dict]) -> dict:
     }
 
 
+def python_education_consistent_on_identical_inputs(runs: list[dict]) -> dict:
+    """Same candidate degrees and required_degree must yield the same score."""
+    groups: dict[str, list[int]] = defaultdict(list)
+
+    for row in runs:
+        key = freeze(
+            {
+                "candidate_degrees": row.get("candidate_degrees"),
+                "required_degree": row.get("required_degree"),
+            }
+        )
+        groups[key].append(row["education_score"])
+
+    consistent = all(len(set(scores)) == 1 for scores in groups.values())
+    production_range = summarize([row["education_score"] for row in runs])["range"]
+
+    return {
+        "identical_education_inputs_always_same_score": consistent,
+        "distinct_education_input_pairs": len(groups),
+        "production_education_range": production_range,
+    }
+
+
 def describe_evidence_units(snapshot: JobEvaluation | None, job_description: str) -> dict:
     """Record which source units the model inspected and which produced skills."""
     units = build_evidence_units(job_description)
@@ -573,6 +596,18 @@ def llm_score_fields_vs_extraction(runs: list[dict]) -> dict:
     production_experience = [row["experience_score"] for row in runs]
     production_summary = summarize(production_experience)
     years_stable = years["unique_count"] == 1
+    llm_education = [
+        (row.get("llm_scores") or {}).get("education")
+        for row in runs
+        if (row.get("llm_scores") or {}).get("education") is not None
+    ]
+    production_education = summarize([row["education_score"] for row in runs])
+    candidate_degree_lists = [
+        tuple(row.get("candidate_degrees") or []) for row in runs
+    ]
+    education_inputs_stable = (
+        degrees["unique_count"] == 1 and len(set(candidate_degree_lists)) <= 1
+    )
 
     return {
         "experience": {
@@ -596,13 +631,20 @@ def llm_score_fields_vs_extraction(runs: list[dict]) -> dict:
         "education": {
             "extraction_unique_degrees": degrees["unique_count"],
             "extraction_values": degrees["frequencies"],
-            "llm_score_summary": summarize(
-                [row["education_score"] for row in runs]
-            ),
+            "llm_score_summary": summarize(llm_education),
+            "production_score_summary": production_education,
+            "python_overwrote_llm_education_score": [
+                row["run"]
+                for row in runs
+                if row.get("python_overwrote_llm_education_score")
+            ],
             "score_varies_with_stable_degree": (
-                degrees["unique_count"] == 1
-                and summarize([row["education_score"] for row in runs])["range"]
-                not in (0, 0.0)
+                education_inputs_stable
+                and production_education["range"] not in (0, 0.0, None)
+            ),
+            "production_range_zero_when_education_inputs_stable": (
+                education_inputs_stable
+                and production_education["range"] in (0, 0.0)
             ),
         },
         "career_relevance": {
@@ -715,10 +757,28 @@ def root_cause_notes(runs: list[dict]) -> list[str]:
         )
 
     education = llm_vs_extract["education"]
-    if education["score_varies_with_stable_degree"]:
+    education_consistency = python_education_consistent_on_identical_inputs(runs)
+    if education_consistency["identical_education_inputs_always_same_score"]:
         notes.append(
-            "Education score varies while required_degree is stable, so that "
-            "variance comes from the LLM education score, not extraction."
+            "Deterministic Python education scoring is consistent: identical "
+            "candidate degrees and required_degree always produced the same "
+            "education_score."
+        )
+    else:
+        notes.append(
+            "WARNING: identical candidate degrees and required_degree "
+            "produced different education_score values."
+        )
+    if education.get("production_range_zero_when_education_inputs_stable"):
+        notes.append(
+            "Production education score range is 0 while validated education "
+            "inputs are stable."
+        )
+    elif education["score_varies_with_stable_degree"]:
+        notes.append(
+            "Education score varies while required_degree and candidate "
+            "degrees are stable, so that variance comes from the education "
+            "scorer, not from the extracted degree field."
         )
 
     notes.append(
@@ -831,7 +891,13 @@ def record_run(
             if snapshot
             else None
         ),
+        "python_overwrote_llm_education_score": (
+            snapshot.scores.education != analysis.scores.education
+            if snapshot
+            else None
+        ),
         "candidate_years_of_experience": profile.years_of_experience,
+        "candidate_degrees": [item.degree for item in profile.education],
         "skills_score": analysis.scores.skills,
         "education_score": analysis.scores.education,
         "experience_score": analysis.scores.experience,
@@ -903,6 +969,29 @@ def print_summary(report: dict) -> None:
         "  production_range_zero_when_years_stable="
         f"{experience.get('production_range_zero_when_years_stable')}  "
         f"python_overwrote_runs={experience.get('python_overwrote_llm_experience_score')}"
+    )
+
+    print()
+    print("Education scoring")
+    education = (report.get("llm_scores_versus_extraction") or {}).get(
+        "education"
+    ) or {}
+    edu_llm = education.get("llm_score_summary") or {}
+    edu_prod = education.get("production_score_summary") or {}
+    print(
+        f"  LLM education            values={edu_llm.get('values')}  "
+        f"min={edu_llm.get('minimum')} max={edu_llm.get('maximum')}  "
+        f"range={edu_llm.get('range')}"
+    )
+    print(
+        f"  production education     values={edu_prod.get('values')}  "
+        f"min={edu_prod.get('minimum')} max={edu_prod.get('maximum')}  "
+        f"range={edu_prod.get('range')}"
+    )
+    print(
+        "  production_range_zero_when_education_inputs_stable="
+        f"{education.get('production_range_zero_when_education_inputs_stable')}  "
+        f"python_overwrote_runs={education.get('python_overwrote_llm_education_score')}"
     )
 
     print()
@@ -1068,6 +1157,9 @@ def build_report(
             runs
         ),
         "python_experience_scorer": python_experience_consistent_on_identical_inputs(
+            runs
+        ),
+        "python_education_scorer": python_education_consistent_on_identical_inputs(
             runs
         ),
         "llm_scores_versus_extraction": llm_score_fields_vs_extraction(runs),

@@ -105,6 +105,18 @@ def test_extraction_still_abstains_when_in_doubt():
     assert "This is the default and the correct answer when in doubt." in prompt()
 
 
+def test_null_required_degree_means_no_stated_level():
+    text = prompt()
+
+    assert "extract the minimum required degree level" in text
+    assert "Use null when the posting does not state a required" in text
+    assert "Master's preferred" in text
+    assert "equivalent professional experience" in text
+    assert "equivalent combination of education and experience" in text
+    assert "Do not use null merely because you are uncertain." in text
+    assert "Do not raise that level because a higher degree is preferred." in text
+
+
 # --- sponsorship classification ---------------------------------------------
 
 

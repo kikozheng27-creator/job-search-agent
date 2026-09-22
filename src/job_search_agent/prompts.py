@@ -11,6 +11,16 @@ Extraction rules (facts only, do not infer beyond the text):
   explicit.
 - minimum_years_experience: the lowest number of years the posting requires.
   For a range such as "3-5 years", use 3. Use null if no number is given.
+- required_degree: extract the minimum required degree level, the lowest
+  level the posting actually requires. "Bachelor's degree required" is
+  Bachelor's. "Bachelor's or Master's" and "Bachelor's degree or higher" are
+  Bachelor's. "Bachelor's required; Master's preferred" is Bachelor's. Do not
+  raise that level because a higher degree is preferred. Use null when the
+  posting does not state a required degree level, when the only degree
+  language is preferred ("Master's preferred"), or when experience can
+  replace the degree ("Bachelor's degree or equivalent professional
+  experience", "Bachelor's degree, or equivalent combination of education
+  and experience"). Do not use null merely because you are uncertain.
 - required_skills vs preferred_skills: leave both lists empty. Python
   fills them from a dedicated skill-inventory extraction step.
 - skill_unit_decisions: leave empty.
