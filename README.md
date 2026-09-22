@@ -19,7 +19,7 @@ produces a reproducible match score and recommendation.
 - Structured LLM requirement extraction
 - Evidence-unit grounding of skill claims
 - Deterministic skill, experience, and education scoring
-- LLM career-relevance scoring
+- Deterministic career-relevance scoring from structured alignment evidence
 - Python sponsorship and work-authorization classification
 - Hard-requirement filtering, independent of the weighted score
 - Safeguards against hallucinated or unsupported claims
@@ -75,8 +75,9 @@ Failed hard filters print `Hard Filters: FAILED` with reasons and force
    extraction and grounding.
 3. **Structured LLM extraction.** The OpenAI client requests
    Pydantic-backed structured outputs for job requirements and a dedicated
-   per-unit skill inventory. The model also supplies career-relevance
-   scoring and explanatory prose.
+   per-unit skill inventory. The model also supplies structured
+   career-alignment evidence and explanatory prose. Python scores career
+   relevance from that evidence.
 4. **Grounding and safeguards.** Python rejects unknown evidence-unit IDs,
    skills not present in their cited unit, non-skill categories, and
    contextual tool mentions that are not candidate requirements. Missing
@@ -84,7 +85,8 @@ Failed hard filters print `Hard Filters: FAILED` with reasons and force
    unresolved concern if repair fails.
 5. **Deterministic component scoring.** Python computes skill overlap from
    the grounded inventory, experience from candidate years versus the
-   stated minimum, and education from degree-level requirements.
+   stated minimum, education from degree-level requirements, and career
+   relevance from quoted target-family and preferred-industry alignment.
    Education affects the weighted score but is not a hard filter.
 6. **Sponsorship classification and hard filters.** Python classifies
    sponsorship/work-authorization language from source sentences and

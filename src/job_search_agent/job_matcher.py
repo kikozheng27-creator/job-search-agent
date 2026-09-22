@@ -1,5 +1,9 @@
 from job_search_agent.authorization_claims import sanitize_analysis_prose
 from job_search_agent.candidate import CandidateProfile
+from job_search_agent.career_relevance_scorer import (
+    score_career_relevance,
+    validate_career_alignment,
+)
 from job_search_agent.concerns import collect_concerns
 from job_search_agent.config_models import FilterConfig, ScoringConfig
 from job_search_agent.education_scorer import score_education
@@ -11,6 +15,7 @@ from job_search_agent.models import (
     Recommendation,
     SkillExtractionReport,
     SkillExtractionStatus,
+    TargetFamilyRelation,
 )
 from job_search_agent.prompts import build_evaluation_prompt
 from job_search_agent.protocols import JobEvaluator
@@ -95,6 +100,13 @@ class JobMatcher:
             profile,
             evaluation.requirements,
         )
+        alignment = validate_career_alignment(
+            evaluation.career_alignment,
+            profile,
+            job_description,
+        )
+        evaluation.career_alignment = alignment
+        evaluation.scores.career_relevance = score_career_relevance(alignment)
 
         extraction_report.skills_scored_from_inventory = (
             score_from_inventory
@@ -139,6 +151,12 @@ class JobMatcher:
             )
 
         concerns = collect_concerns(evaluation.requirements, profile)
+        if alignment.target_family_relation is TargetFamilyRelation.UNCLEAR:
+            concerns.append(
+                "Career Relevance used the deterministic neutral abstention "
+                "score because role-family alignment could not be established "
+                "confidently."
+            )
         if extraction_report.status is SkillExtractionStatus.UNRESOLVED:
             unit_ids = ", ".join(extraction_report.unresolved_unit_ids) or "unknown"
             concerns.append(
@@ -160,4 +178,5 @@ class JobMatcher:
             reasoning=reasoning,
             source_url=source_url,
             skill_extraction=extraction_report,
+            career_alignment=alignment,
         )

@@ -71,8 +71,41 @@ Score each component from 0 to 100, judging the candidate against this posting:
   reserve scores below 85 for candidates genuinely short of the minimum,
   scaled by how far short they fall. When the posting states no minimum,
   judge relevance alone rather than assuming a requirement.
-- career_relevance: how well this role advances the candidate's target job
-  families and preferred industries.
+- career_relevance: do not decide this score. Python computes it from
+  career_alignment. Career relevance answers only how aligned this role is
+  with the candidate's target job families and preferred industries.
+  It is not a qualification judgment. Skills, skill overlap, education,
+  degree level, years of experience, sponsorship, work authorization, and
+  location must not affect these relations.
+  target_family_relation is one of "direct", "adjacent", "unrelated", or
+  "unclear":
+    * "direct" — the posting explicitly describes a role that belongs to
+      one of the candidate's target job families.
+    * "adjacent" — the role is clearly related and plausibly
+      career-adjacent to a target family, but is not itself a member of
+      that family.
+    * "unrelated" — the role is clearly outside the candidate's target job
+      families.
+    * "unclear" — the posting does not provide enough evidence to classify
+      reliably. This is the required abstention when evidence is missing.
+  target_family_evidence is a contiguous quote from the posting for
+  "direct", "adjacent", and "unrelated". The job title is valid evidence.
+  Responsibilities are valid evidence. Use null for "unclear". Do not
+  invent a quote.
+  preferred_industry_relation is one of "match", "mismatch", "unknown", or
+  "not_applicable":
+    * "not_applicable" when the candidate's preferred_industries list is
+      empty.
+    * "match" — the posting clearly indicates an industry or domain that
+      matches a preferred industry.
+    * "mismatch" — the posting clearly indicates an industry or domain
+      outside the candidate's preferred industries.
+    * "unknown" — the candidate listed preferred industries, but the
+      posting does not provide enough evidence to determine the industry
+      or domain. This is the required abstention when that evidence is
+      missing.
+  preferred_industry_evidence is a contiguous quote from the posting for
+  "match" and "mismatch", otherwise null. Do not invent a quote.
 
 Also provide:
 - strengths: concrete reasons the candidate fits.

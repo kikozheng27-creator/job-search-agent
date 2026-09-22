@@ -584,6 +584,44 @@ def _skill_swing_side(row: dict) -> dict:
     }
 
 
+def _career_relevance_comparison(runs: list[dict]) -> dict:
+    """Separate the raw model integer from the Python career score.
+
+    Identical validated relations must produce a zero production range.
+    Relation differences are extraction variance, not scorer variance.
+    """
+    llm_values = [
+        (row.get("llm_scores") or {}).get("career_relevance")
+        for row in runs
+        if (row.get("llm_scores") or {}).get("career_relevance") is not None
+    ]
+    production = summarize([row["career_relevance_score"] for row in runs])
+    family = categorical_summary(runs, "target_family_alignment")
+    industry = categorical_summary(runs, "preferred_industry_alignment")
+    relations_stable = family["unique_count"] == 1 and industry["unique_count"] == 1
+
+    return {
+        "note": (
+            "Python scores career relevance from validated target-family "
+            "and preferred-industry relations. The model integer is not "
+            "production authority."
+        ),
+        "llm_score_summary": summarize(llm_values),
+        "production_score_summary": production,
+        "target_family_alignment": family,
+        "preferred_industry_alignment": industry,
+        "python_overwrote_llm_career_relevance_score": [
+            row["run"]
+            for row in runs
+            if row.get("python_overwrote_llm_career_relevance_score")
+        ],
+        "relations_stable": relations_stable,
+        "production_range_zero_when_relations_stable": (
+            relations_stable and production["range"] in (0, 0.0)
+        ),
+    }
+
+
 def llm_score_fields_vs_extraction(runs: list[dict]) -> dict:
     """Separate LLM component scores from extracted requirement fields."""
     years = categorical_summary(runs, "minimum_years_experience")
@@ -647,15 +685,7 @@ def llm_score_fields_vs_extraction(runs: list[dict]) -> dict:
                 and production_education["range"] in (0, 0.0)
             ),
         },
-        "career_relevance": {
-            "note": (
-                "career_relevance has no extracted requirement list; "
-                "the LLM assigns this score directly."
-            ),
-            "llm_score_summary": summarize(
-                [row["career_relevance_score"] for row in runs]
-            ),
-        },
+        "career_relevance": _career_relevance_comparison(runs),
     }
 
 
@@ -781,10 +811,24 @@ def root_cause_notes(runs: list[dict]) -> list[str]:
             "scorer, not from the extracted degree field."
         )
 
-    notes.append(
-        "Career relevance has no extracted requirement list; its variance "
-        "is LLM scoring, not a Python overwrite."
-    )
+    career = llm_vs_extract["career_relevance"]
+    if career.get("production_range_zero_when_relations_stable"):
+        notes.append(
+            "Production career relevance range is 0 while validated "
+            "target-family and preferred-industry relations are stable. "
+            "The raw model integer is not the production score."
+        )
+    elif career.get("relations_stable"):
+        notes.append(
+            "WARNING: identical career-alignment relations produced "
+            "different production career relevance scores."
+        )
+    else:
+        notes.append(
+            "Career relevance is scored in Python from validated "
+            "target-family and preferred-industry relations. Production "
+            "variance follows those relations, not the raw model integer."
+        )
 
     stance_unique = categorical_summary(runs, "sponsorship_stance")["unique_count"]
     notes.append(
@@ -901,7 +945,31 @@ def record_run(
         "skills_score": analysis.scores.skills,
         "education_score": analysis.scores.education,
         "experience_score": analysis.scores.experience,
+        "llm_career_relevance_score": (
+            snapshot.scores.career_relevance if snapshot else None
+        ),
+        "target_family_alignment": (
+            analysis.career_alignment.target_family_relation.value
+        ),
+        "preferred_industry_alignment": (
+            analysis.career_alignment.preferred_industry_relation.value
+        ),
+        "llm_target_family_alignment": (
+            snapshot.career_alignment.target_family_relation.value
+            if snapshot
+            else None
+        ),
+        "llm_preferred_industry_alignment": (
+            snapshot.career_alignment.preferred_industry_relation.value
+            if snapshot
+            else None
+        ),
         "career_relevance_score": analysis.scores.career_relevance,
+        "python_overwrote_llm_career_relevance_score": (
+            snapshot.scores.career_relevance != analysis.scores.career_relevance
+            if snapshot
+            else None
+        ),
         "overall_score": analysis.overall_score,
         "score_based_recommendation": score_only.value,
         "final_recommendation": analysis.recommendation.value,
@@ -992,6 +1060,38 @@ def print_summary(report: dict) -> None:
         "  production_range_zero_when_education_inputs_stable="
         f"{education.get('production_range_zero_when_education_inputs_stable')}  "
         f"python_overwrote_runs={education.get('python_overwrote_llm_education_score')}"
+    )
+
+    print()
+    print("Career relevance scoring")
+    career = (report.get("llm_scores_versus_extraction") or {}).get(
+        "career_relevance"
+    ) or {}
+    career_llm = career.get("llm_score_summary") or {}
+    career_prod = career.get("production_score_summary") or {}
+    print(
+        f"  raw LLM career relevance values={career_llm.get('values')}  "
+        f"min={career_llm.get('minimum')} max={career_llm.get('maximum')}  "
+        f"range={career_llm.get('range')}"
+    )
+    print(
+        f"  target_family_alignment: "
+        f"{career.get('target_family_alignment')}"
+    )
+    print(
+        f"  preferred_industry_alignment: "
+        f"{career.get('preferred_industry_alignment')}"
+    )
+    print(
+        f"  production career relevance values={career_prod.get('values')}  "
+        f"min={career_prod.get('minimum')} max={career_prod.get('maximum')}  "
+        f"range={career_prod.get('range')}"
+    )
+    print(
+        "  production_range_zero_when_relations_stable="
+        f"{career.get('production_range_zero_when_relations_stable')}  "
+        "python_overwrote_runs="
+        f"{career.get('python_overwrote_llm_career_relevance_score')}"
     )
 
     print()
